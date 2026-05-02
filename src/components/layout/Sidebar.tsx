@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, Newspaper, Trophy, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { LayoutDashboard, Trophy, Newspaper, X } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -21,7 +20,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const content = (
     <nav className="flex flex-col gap-1 p-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">
+      <p
+        className="text-xs font-bold uppercase tracking-widest px-3 mb-3"
+        style={{ color: '#8392B5', letterSpacing: '0.18em' }}
+      >
         Navigation
       </p>
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
@@ -31,14 +33,26 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             key={href}
             href={href}
             onClick={onClose}
-            className={cn(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-              active
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            )}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            style={{
+              background: active ? 'rgba(255,90,77,0.12)' : 'transparent',
+              color: active ? '#FF5A4D' : '#8392B5',
+              border: active ? '1px solid rgba(255,90,77,0.2)' : '1px solid transparent',
+            }}
+            onMouseEnter={e => {
+              if (!active) {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
+                (e.currentTarget as HTMLElement).style.color = '#F0F4FF';
+              }
+            }}
+            onMouseLeave={e => {
+              if (!active) {
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
+                (e.currentTarget as HTMLElement).style.color = '#8392B5';
+              }
+            }}
           >
-            <Icon size={18} />
+            <Icon size={16} />
             {label}
           </Link>
         );
@@ -49,22 +63,32 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden lg:block w-60 shrink-0 fixed left-0 top-16 bottom-0 bg-slate-900 border-r border-slate-800 overflow-y-auto">
+      <aside
+        className="hidden lg:block w-60 shrink-0 fixed left-0 top-16 bottom-0 overflow-y-auto"
+        style={{ background: '#0B1020', borderRight: '1px solid rgba(255,255,255,0.07)' }}
+      >
         {content}
       </aside>
 
-      {/* Mobile drawer overlay */}
+      {/* Mobile drawer */}
       {open && (
         <div className="lg:hidden fixed inset-0 z-40 flex">
-          <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-          <aside className="relative z-50 w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
-            <div className="flex items-center justify-between px-4 h-16 border-b border-slate-800">
-              <span className="text-lg font-extrabold text-white">
-                My<span className="text-blue-500">Sports</span>
+          <div className="fixed inset-0 bg-black/70" onClick={onClose} />
+          <aside
+            className="relative z-50 w-64 flex flex-col"
+            style={{ background: '#0B1020', borderRight: '1px solid rgba(255,255,255,0.07)' }}
+          >
+            <div
+              className="flex items-center justify-between px-4 h-16"
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+            >
+              <span className="text-lg font-extrabold" style={{ color: '#F0F4FF', letterSpacing: '-0.02em' }}>
+                My<span style={{ color: '#FF5A4D' }}>Sports</span>
               </span>
               <button
                 onClick={onClose}
-                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800"
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: '#8392B5' }}
               >
                 <X size={18} />
               </button>

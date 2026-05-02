@@ -7,15 +7,17 @@ import { and, eq } from 'drizzle-orm';
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const { id } = await params;
+
   await db
     .delete(favoritePlayers)
     .where(
-      and(eq(favoritePlayers.id, params.id), eq(favoritePlayers.userId, session.user.id))
+      and(eq(favoritePlayers.id, id), eq(favoritePlayers.userId, session.user.id))
     );
 
   return NextResponse.json({ ok: true });

@@ -1,10 +1,8 @@
-import { defineConfig } from 'drizzle-kit';
-
-export default defineConfig({
+export default {
   schema: './src/lib/db/schema.ts',
   out: './drizzle',
-  dialect: 'sqlite',
+  driver: 'libsql',
   dbCredentials: {
     url: 'file:./mysports.db',
   },
-});
+};

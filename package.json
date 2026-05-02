@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:push": "drizzle-kit push",
-    "db:generate": "drizzle-kit generate",
+    "db:push": "node scripts/init-db.mjs",
+    "db:generate": "drizzle-kit generate:sqlite",
     "setup": "npm install && npm run db:push"
   },
   "dependencies": {
@@ -17,14 +17,14 @@
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "drizzle-orm": "^0.31.2",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^0.390.0",
-    "next": "14.2.4",
-    "next-auth": "^4.24.7",
+    "next": "^16.2.4",
+    "next-auth": "^4.24.14",
     "react": "^18",
     "react-dom": "^18",
     "tailwind-merge": "^2.3.0",
-    "uuid": "^10.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -33,7 +33,7 @@
     "@types/react-dom": "^18",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.19",
-    "drizzle-kit": "^0.22.7",
+    "drizzle-kit": "^0.18.1",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "typescript": "^5"
