@@ -1,0 +1,255 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
+
+const MONO = 'var(--font-mono), ui-monospace, monospace';
+const STORAGE_KEY = 'ms_scoreboard_v1';
+
+export interface ScoreTeam {
+  abbr: string;
+  name: string;
+  logo?: string;
+  score?: string;
+  winning: boolean;
+  mine: boolean;
+}
+
+export interface ScoreGame {
+  id: string;
+  state: 'pre' | 'in' | 'post';
+  detail: string;
+  away: ScoreTeam;
+  home: ScoreTeam;
+  venue?: string;
+  broadcast?: string;
+}
+
+export interface ScoreSection {
+  key: string;
+  name: string;
+  color: string;
+  games: ScoreGame[];
+}
+
+interface ScoreboardClientProps {
+  sections: ScoreSection[];
+  dateLabel: string;
+}
+
+function GameCard({ g }: { g: ScoreGame }) {
+  const live = g.state === 'in';
+  const post = g.state === 'post';
+
+  return (
+    <div style={{
+      background: '#121A30',
+      borderRadius: 8,
+      border: `1px solid ${live ? 'rgba(255,90,77,0.4)' : 'rgba(255,255,255,0.07)'}`,
+      padding: 14,
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {live && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: '#FF5A4D' }} />}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{ fontSize: 9, color: '#8392B5', fontWeight: 700, letterSpacing: '0.12em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>
+          {g.venue ?? ''}
+        </span>
+        <span style={{
+          fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', fontFamily: MONO,
+          color: live ? '#FF5A4D' : post ? '#8392B5' : '#F0F4FF',
+          flexShrink: 0,
+        }}>
+          {live ? `● ${g.detail}` : post ? 'FINAL' : g.detail}
+        </span>
+      </div>
+      {[g.away, g.home].map((team, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: i === 0 ? 6 : 0 }}>
+          {team.logo ? (
+            <div style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: '#1A2440', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Image src={team.logo} alt={team.name} width={20} height={20} style={{ objectFit: 'contain' }} unoptimized />
+            </div>
+          ) : (
+            <div style={{ width: 24, height: 24, background: '#1A2440', borderRadius: 3, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#F0F4FF', fontWeight: 800 }}>
+              {team.abbr.slice(0, 3)}
+            </div>
+          )}
+          <span style={{
+            flex: 1, fontSize: 12, fontWeight: team.mine ? 700 : 500,
+            color: team.mine ? '#FFD166' : '#F0F4FF',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{team.name}</span>
+          {team.score !== undefined && (
+            <span style={{
+              fontFamily: MONO, fontSize: 16, fontWeight: team.winning ? 800 : 500,
+              color: team.winning ? '#F0F4FF' : '#8392B5',
+            }}>{team.score}</span>
+          )}
+        </div>
+      ))}
+      {g.broadcast && (
+        <div style={{ marginTop: 8, fontSize: 9, color: '#8392B5' }}>{g.broadcast}</div>
+      )}
+    </div>
+  );
+}
+
+export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClientProps) {
+  const defaultOrder    = sections.map(s => s.key);
+  const [order, setOrder]           = useState<string[]>(defaultOrder);
+  const [collapsed, setCollapsed]   = useState<Record<string, boolean>>({});
+  const [dragId, setDragId]         = useState<string | null>(null);
+  const [overId, setOverId]         = useState<string | null>(null);
+  const [savedToast, setSavedToast] = useState(false);
+
+  // Persist order + collapsed state
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { order?: string[]; collapsed?: Record<string, boolean> };
+        if (parsed.order) setOrder(parsed.order);
+        if (parsed.collapsed) setCollapsed(parsed.collapsed);
+      }
+    } catch {}
+  }, []);
+
+  const persist = (nextOrder: string[], nextCollapsed: Record<string, boolean>) => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ order: nextOrder, collapsed: nextCollapsed })); } catch {}
+    setSavedToast(true);
+    setTimeout(() => setSavedToast(false), 1500);
+  };
+
+  const toggleCollapse = (key: string) => {
+    const next = { ...collapsed, [key]: !collapsed[key] };
+    setCollapsed(next);
+    persist(order, next);
+  };
+
+  const onDragStart = (key: string) => (e: React.DragEvent) => {
+    e.dataTransfer.effectAllowed = 'move';
+    setDragId(key);
+  };
+  const onDragOver = (key: string) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (key !== dragId) setOverId(key);
+  };
+  const onDrop = (key: string) => () => {
+    if (!dragId || !overId || dragId === overId) { setDragId(null); setOverId(null); return; }
+    const next = [...order];
+    const from = next.indexOf(dragId);
+    const to   = next.indexOf(key);
+    next.splice(from, 1);
+    next.splice(to, 0, dragId);
+    setOrder(next);
+    setDragId(null);
+    setOverId(null);
+    persist(next, collapsed);
+  };
+  const onDragEnd = () => { setDragId(null); setOverId(null); };
+
+  const sectionMap = Object.fromEntries(sections.map(s => [s.key, s]));
+  const ordered = order.filter(k => sectionMap[k]).map(k => sectionMap[k]);
+  const missing = sections.filter(s => !order.includes(s.key));
+  const visible = [...ordered, ...missing];
+
+  if (sections.length === 0) {
+    return (
+      <div style={{ padding: 60, textAlign: 'center', color: '#8392B5', border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: '#F0F4FF', marginBottom: 6 }}>No games today.</div>
+        <div style={{ fontSize: 13 }}>Check back later or visit yesterday&apos;s games on the dashboard.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 32 }}>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: '#F0F4FF' }}>Scoreboard</h1>
+        <span style={{ fontSize: 11, color: '#8392B5', letterSpacing: '0.16em', fontWeight: 700 }}>{dateLabel}</span>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: '#8392B5', letterSpacing: '0.12em' }}>
+          DRAG HEADERS TO REORDER
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+        {visible.map(section => {
+          const isOver      = overId === section.key && dragId !== section.key;
+          const isDragging  = dragId === section.key;
+          const isCollapsed = !!collapsed[section.key];
+
+          return (
+            <div
+              key={section.key}
+              onDragOver={onDragOver(section.key)}
+              onDrop={onDrop(section.key)}
+              onDragEnd={onDragEnd}
+              style={{
+                opacity: isDragging ? 0.4 : 1,
+                borderTop: isOver ? '2px solid #FF5A4D' : '2px solid transparent',
+                paddingTop: 8,
+                transition: 'border-color 0.12s, opacity 0.12s',
+              }}
+            >
+              {/* League header — draggable */}
+              <div
+                draggable
+                onDragStart={onDragStart(section.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, marginBottom: isCollapsed ? 0 : 16,
+                  cursor: 'grab', userSelect: 'none',
+                }}
+              >
+                <div style={{ width: 10, height: 10, borderRadius: 999, background: section.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.22em', color: '#F0F4FF', textTransform: 'uppercase' }}>
+                  {section.name}
+                </span>
+                <span style={{ fontSize: 10, color: '#8392B5', fontFamily: MONO }}>
+                  · {section.games.length} game{section.games.length !== 1 ? 's' : ''}
+                </span>
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)', marginLeft: 8 }} />
+
+                {/* Collapse toggle */}
+                <button
+                  onClick={e => { e.stopPropagation(); toggleCollapse(section.key); }}
+                  onMouseDown={e => e.stopPropagation()}
+                  style={{
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#8392B5', padding: '3px 10px', borderRadius: 5,
+                    fontSize: 10, fontWeight: 700, cursor: 'pointer',
+                    letterSpacing: '0.1em', fontFamily: 'inherit', flexShrink: 0,
+                    transition: 'color 0.12s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#F0F4FF')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#8392B5')}
+                >
+                  {isCollapsed ? '▶ EXPAND' : '▼ COLLAPSE'}
+                </button>
+              </div>
+
+              {/* Games grid */}
+              {!isCollapsed && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+                  {section.games.map(g => (
+                    <GameCard key={g.id} g={g} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {savedToast && (
+        <div style={{
+          position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+          background: '#FF5A4D', color: '#000', padding: '8px 18px', borderRadius: 999,
+          fontSize: 11, fontWeight: 800, letterSpacing: '0.14em', zIndex: 60,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        }}>✓ ORDER SAVED</div>
+      )}
+    </div>
+  );
+}

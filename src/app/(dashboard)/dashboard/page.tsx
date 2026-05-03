@@ -3,9 +3,9 @@ import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { favoriteTeams, favoritePlayers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { getScoreboard, getNews } from '@/lib/api/espn';
+import { getScoreboard, getNews, getTeamNews } from '@/lib/api/espn';
 import type { Metadata } from 'next';
-import type { ESPNGame, ESPNNewsArticle } from '@/types';
+import type { ESPNGame, ESPNNewsArticle, FavoriteTeam } from '@/types';
 import DashboardClient, { type GameData } from '@/components/dashboard/DashboardClient';
 
 export const metadata: Metadata = { title: 'Dashboard' };
@@ -15,10 +15,24 @@ const LEAGUES = [
   { sport: 'basketball', league: 'nba',   name: 'NBA' },
   { sport: 'baseball',   league: 'mlb',   name: 'MLB' },
   { sport: 'hockey',     league: 'nhl',   name: 'NHL' },
+  { sport: 'soccer',     league: 'usa.1', name: 'MLS' },
+  { sport: 'soccer',     league: 'esp.1', name: 'La Liga' },
+  { sport: 'soccer',     league: 'eng.1', name: 'EPL' },
+  { sport: 'golf',       league: 'pga',   name: 'PGA Tour' },
 ];
 
+function formatDate(d: Date): string {
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+function parseGameDate(game: ESPNGame): string {
+  const comp = game.competitions?.[0];
+  // ESPN returns ISO dates like "2026-05-03T..." — strip time and dashes to match formatDate() output
+  return comp?.date ? comp.date.slice(0, 10).replace(/-/g, '') : '';
+}
+
 function transformGame(
-  game: ESPNGame & { leagueName: string },
+  game: ESPNGame & { leagueName: string; sport: string; leagueKey: string },
   myTeamIds: Set<string>,
 ): GameData | null {
   const comp = game.competitions?.[0];
@@ -40,8 +54,11 @@ function transformGame(
   return {
     id: game.id,
     league: game.leagueName,
+    sport: game.sport,
+    leagueKey: game.leagueKey,
     state,
     detail,
+    date: parseGameDate(game),
     away: {
       abbr:    away.team.abbreviation,
       name:    away.team.displayName,
@@ -67,33 +84,89 @@ function transformGame(
   };
 }
 
+function gameScore(g: GameData): number {
+  const fav  = (g.away.mine || g.home.mine) ? 4 : 0;
+  const live = g.state === 'in'   ? 2 : 0;
+  const pre  = g.state === 'pre'  ? 1 : 0;
+  return fav + live + pre;
+}
+
+function sortByFavorites(games: GameData[]): GameData[] {
+  return [...games].sort((a, b) => gameScore(b) - gameScore(a));
+}
+
+async function fetchTeamNews(teams: FavoriteTeam[]): Promise<ESPNNewsArticle[]> {
+  // Fetch news for up to 4 favorite teams in parallel
+  const slice = teams.slice(0, 4);
+  const results = await Promise.all(
+    slice.map(t => getTeamNews(t.sport, t.league, t.teamId, 4))
+  );
+  // Dedupe by article URL
+  const seen = new Set<string>();
+  const articles: ESPNNewsArticle[] = [];
+  for (const batch of results) {
+    for (const a of batch as ESPNNewsArticle[]) {
+      const key = a.links?.web?.href ?? a.headline;
+      if (!seen.has(key)) {
+        seen.add(key);
+        articles.push(a);
+      }
+    }
+  }
+  return articles.slice(0, 8);
+}
+
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   const userId  = session!.user.id;
 
-  const [myTeams, myPlayers, ...scoreResults] = await Promise.all([
+  const now       = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const todayStr     = formatDate(now);
+  const yesterdayStr = formatDate(yesterday);
+
+  const [myTeams, myPlayers] = await Promise.all([
     db.select().from(favoriteTeams).where(eq(favoriteTeams.userId, userId)),
     db.select().from(favoritePlayers).where(eq(favoritePlayers.userId, userId)),
-    ...LEAGUES.map(l => getScoreboard(l.sport, l.league)),
   ]);
 
-  const headlines = (await getNews(undefined, 8)) as ESPNNewsArticle[];
+  // Fetch today + yesterday scoreboards for all leagues, plus general headlines, plus team news
+  const [generalHeadlines, teamNews, ...scoreResults] = await Promise.all([
+    getNews(undefined, 8),
+    fetchTeamNews(myTeams),
+    ...LEAGUES.flatMap(l => [
+      getScoreboard(l.sport, l.league, todayStr),
+      getScoreboard(l.sport, l.league, yesterdayStr),
+    ]),
+  ]);
 
   const myTeamIds = new Set(myTeams.map(t => t.teamId));
 
-  const allGames = LEAGUES.flatMap((l, i) =>
-    ((scoreResults[i] as ESPNGame[]) ?? []).map(g => ({ ...g, leagueName: l.name }))
-  );
+  const todayGames: GameData[]     = [];
+  const yesterdayGames: GameData[] = [];
 
-  const games = allGames
-    .map(g => transformGame(g, myTeamIds))
-    .filter((g): g is GameData => g !== null);
+  LEAGUES.forEach((l, i) => {
+    const todayRaw     = (scoreResults[i * 2]     as ESPNGame[]) ?? [];
+    const yesterdayRaw = (scoreResults[i * 2 + 1] as ESPNGame[]) ?? [];
 
-  const liveMyTeamCount = games.filter(
+    for (const g of todayRaw) {
+      const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamIds);
+      if (gd && gd.date === todayStr) todayGames.push(gd);
+    }
+    for (const g of yesterdayRaw) {
+      const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamIds);
+      if (gd && gd.date === yesterdayStr) yesterdayGames.push(gd);
+    }
+  });
+
+  const sortedToday     = sortByFavorites(todayGames);
+  const sortedYesterday = sortByFavorites(yesterdayGames);
+
+  const liveMyTeamCount = sortedToday.filter(
     g => g.state === 'in' && (g.away.mine || g.home.mine)
   ).length;
 
-  const now = new Date();
   const dateLabel = now
     .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
     .toUpperCase()
@@ -106,10 +179,12 @@ export default async function DashboardPage() {
       userName={userName}
       dateLabel={dateLabel}
       liveMyTeamCount={liveMyTeamCount}
-      games={games}
+      todayGames={sortedToday}
+      yesterdayGames={sortedYesterday}
       myTeams={myTeams}
       myPlayers={myPlayers}
-      headlines={headlines}
+      generalHeadlines={generalHeadlines as ESPNNewsArticle[]}
+      teamNews={teamNews}
     />
   );
 }

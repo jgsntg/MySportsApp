@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { timeAgo } from '@/lib/utils';
 import type { FavoriteTeam, FavoritePlayer, ESPNNewsArticle } from '@/types';
+import type { GameSummary, ESPNPlay } from '@/lib/api/espn';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,8 +23,11 @@ export interface GameTeam {
 export interface GameData {
   id: string;
   league: string;
+  sport: string;
+  leagueKey: string;
   state: 'pre' | 'in' | 'post';
   detail: string;
+  date: string;
   away: GameTeam;
   home: GameTeam;
   venue?: string;
@@ -34,16 +38,18 @@ interface DashboardClientProps {
   userName: string;
   dateLabel: string;
   liveMyTeamCount: number;
-  games: GameData[];
+  todayGames: GameData[];
+  yesterdayGames: GameData[];
   myTeams: FavoriteTeam[];
   myPlayers: FavoritePlayer[];
-  headlines: ESPNNewsArticle[];
+  generalHeadlines: ESPNNewsArticle[];
+  teamNews: ESPNNewsArticle[];
 }
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 
-type ThemeKey = 'dark' | 'dim' | 'contrast';
-type AccentKey = 'coral' | 'cyan' | 'lime' | 'rose';
+type ThemeKey   = 'dark' | 'dim' | 'contrast';
+type AccentKey  = 'coral' | 'cyan' | 'lime' | 'rose';
 type DensityKey = 'compact' | 'cozy' | 'comfy';
 
 const THEMES: Record<ThemeKey, { bg: string; surface: string; surface2: string; ink: string; muted: string; border: string }> = {
@@ -126,44 +132,70 @@ function Ticker({ games, T, A }: { games: GameData[]; T: Tokens; A: Accent }) {
   );
 }
 
-// ── LiveBanner ────────────────────────────────────────────────────────────────
+// ── LiveBanner (carousel) ─────────────────────────────────────────────────────
 
 function LiveBanner({ games, T, A, onFocus }: {
-  games: GameData[]; T: Tokens; A: Accent; onFocus: (g: GameData) => void;
+  games: GameData[]; T: Tokens; A: Accent; onFocus: (g: GameData, idx: number) => void;
 }) {
+  const [idx, setIdx] = useState(0);
   const live = games.filter(g => g.state === 'in' && (g.away.mine || g.home.mine));
   if (!live.length) return null;
+
+  const safeIdx = Math.min(idx, live.length - 1);
+  const g = live[safeIdx];
+  const me  = g.away.mine ? g.away : g.home;
+  const opp = g.away.mine ? g.home : g.away;
+
+  const prev = () => setIdx(i => (i - 1 + live.length) % live.length);
+  const next = () => setIdx(i => (i + 1) % live.length);
+
   return (
     <div style={{
       margin: '20px 0 0', padding: '14px 18px', background: T.surface,
       border: `1px solid ${T.border}`, borderLeft: `3px solid ${A.a}`,
-      borderRadius: 8, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+      borderRadius: 8, display: 'flex', alignItems: 'center', gap: 16,
     }}>
       <span style={{
         fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', color: A.a,
         padding: '4px 8px', background: 'rgba(255,90,77,0.12)', borderRadius: 4, flexShrink: 0,
       }}>● YOUR TEAMS PLAYING</span>
-      <div style={{ display: 'flex', gap: 22, flex: 1, flexWrap: 'wrap' }}>
-        {live.map(g => {
-          const me  = g.away.mine ? g.away : g.home;
-          const opp = g.away.mine ? g.home : g.away;
-          return (
-            <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 11, color: T.muted, letterSpacing: '0.1em' }}>{g.league}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: A.b }}>{me.name}</span>
-              <span style={{ fontFamily: MONO, fontSize: 16, fontWeight: 800, color: me.winning ? A.b : T.ink }}>{me.score}</span>
-              <span style={{ color: T.muted, fontSize: 12 }}>vs</span>
-              <span style={{ fontFamily: MONO, fontSize: 16, fontWeight: 800, color: opp.winning ? A.b : T.ink }}>{opp.score}</span>
-              <span style={{ fontSize: 14, fontWeight: 500, color: T.ink }}>{opp.name}</span>
-              <span style={{ fontSize: 11, color: A.a, fontFamily: MONO, marginLeft: 4 }}>{g.detail}</span>
-            </div>
-          );
-        })}
+
+      {/* Carousel nav */}
+      {live.length > 1 && (
+        <button onClick={prev} style={{
+          background: 'transparent', border: `1px solid ${T.border}`, color: T.ink,
+          width: 24, height: 24, borderRadius: 4, cursor: 'pointer', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12,
+        }}>‹</button>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+        <span style={{ fontSize: 11, color: T.muted, letterSpacing: '0.1em' }}>{g.league}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: A.b }}>{me.name}</span>
+        <span style={{ fontFamily: MONO, fontSize: 16, fontWeight: 800, color: me.winning ? A.b : T.ink }}>{me.score}</span>
+        <span style={{ color: T.muted, fontSize: 12 }}>vs</span>
+        <span style={{ fontFamily: MONO, fontSize: 16, fontWeight: 800, color: opp.winning ? A.b : T.ink }}>{opp.score}</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: T.ink }}>{opp.name}</span>
+        <span style={{ fontSize: 11, color: A.a, fontFamily: MONO, marginLeft: 4 }}>{g.detail}</span>
+        {live.length > 1 && (
+          <span style={{ fontSize: 10, color: T.muted, fontFamily: MONO, marginLeft: 4 }}>
+            {safeIdx + 1}/{live.length}
+          </span>
+        )}
       </div>
-      <button onClick={() => onFocus(live[0])} style={{
+
+      {live.length > 1 && (
+        <button onClick={next} style={{
+          background: 'transparent', border: `1px solid ${T.border}`, color: T.ink,
+          width: 24, height: 24, borderRadius: 4, cursor: 'pointer', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12,
+        }}>›</button>
+      )}
+
+      <button onClick={() => onFocus(g, safeIdx)} style={{
         background: A.a, color: '#000', border: 'none', padding: '6px 12px',
         borderRadius: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.12em',
-        cursor: 'pointer', fontFamily: 'inherit',
+        cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
       }}>FOCUS ↗</button>
     </div>
   );
@@ -171,8 +203,8 @@ function LiveBanner({ games, T, A, onFocus }: {
 
 // ── SectionHead ───────────────────────────────────────────────────────────────
 
-function SectionHead({ title, count, action, T, A, onDragStart, onDragEnd, dragging }: {
-  title: string; count?: number | string; action?: string;
+function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDragEnd, dragging }: {
+  title: string; count?: number | string; action?: string; actionHref?: string;
   T: Tokens; A: Accent;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
@@ -198,90 +230,118 @@ function SectionHead({ title, count, action, T, A, onDragStart, onDragEnd, dragg
         <span style={{ fontSize: 10, color: T.muted, fontFamily: MONO }}>· {count}</span>
       )}
       <div style={{ flex: 1, height: 1, background: T.border, marginLeft: 8 }} />
-      {action && (
+      {action && actionHref ? (
+        <Link href={actionHref} style={{ textDecoration: 'none' }}>
+          <span style={{ fontSize: 10, color: A.b, letterSpacing: '0.14em', fontWeight: 700, cursor: 'pointer' }}>
+            {action}
+          </span>
+        </Link>
+      ) : action ? (
         <span style={{ fontSize: 10, color: A.b, letterSpacing: '0.14em', fontWeight: 700, cursor: 'pointer' }}>
           {action}
         </span>
-      )}
+      ) : null}
     </div>
   );
 }
 
-// ── SectionGames ──────────────────────────────────────────────────────────────
+// ── GameCard ──────────────────────────────────────────────────────────────────
 
-function SectionGames({ games, T, A, DEN, onFocus }: {
-  games: GameData[]; T: Tokens; A: Accent; DEN: Density; onFocus: (g: GameData) => void;
+function GameCard({ g, T, A, DEN, onFocus }: {
+  g: GameData; T: Tokens; A: Accent; DEN: Density; onFocus: (g: GameData) => void;
 }) {
-  if (!games.length) {
-    return (
-      <div style={{ padding: '32px', textAlign: 'center', color: T.muted, border: `1px dashed ${T.border}`, borderRadius: 8 }}>
-        No games scheduled today.
-      </div>
-    );
-  }
+  const live = g.state === 'in';
+  const post = g.state === 'post';
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: DEN.gap }}>
-      {games.slice(0, 9).map(g => {
-        const live = g.state === 'in';
-        const post = g.state === 'post';
-        return (
-          <div
-            key={g.id}
-            onClick={() => live && onFocus(g)}
-            style={{
-              background: T.surface, borderRadius: 8,
-              border: `1px solid ${live ? 'rgba(255,90,77,0.4)' : T.border}`,
-              padding: DEN.padCard, position: 'relative', overflow: 'hidden',
-              cursor: live ? 'pointer' : 'default',
-            }}
-          >
-            {live && (
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: A.a }} />
+    <div
+      onClick={() => live && onFocus(g)}
+      style={{
+        background: T.surface, borderRadius: 8,
+        border: `1px solid ${live ? 'rgba(255,90,77,0.4)' : T.border}`,
+        padding: DEN.padCard, position: 'relative', overflow: 'hidden',
+        cursor: live ? 'pointer' : 'default',
+      }}
+    >
+      {live && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: A.a }} />}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.16em', color: T.muted }}>{g.league}</span>
+        <span style={{
+          fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
+          color: live ? A.a : post ? T.muted : T.ink, fontFamily: MONO,
+        }}>
+          {live ? `● ${g.detail}` : post ? 'FINAL' : g.detail}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {[g.away, g.home].map((team, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {team.logo ? (
+              <div style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: T.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Image src={team.logo} alt={team.name} width={22} height={22} style={{ objectFit: 'contain' }} unoptimized />
+              </div>
+            ) : (
+              <div style={{
+                width: 26, height: 26, background: team.color, borderRadius: 4, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, fontWeight: 800, color: '#fff', fontFamily: MONO,
+              }}>{team.abbr.slice(0, 3)}</div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.16em', color: T.muted }}>{g.league}</span>
+            <span style={{ fontSize: DEN.font + 1, color: team.mine ? A.b : T.ink, fontWeight: team.mine ? 700 : 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {team.name}
+            </span>
+            {team.score !== undefined && (
               <span style={{
-                fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
-                color: live ? A.a : post ? T.muted : T.ink, fontFamily: MONO,
-              }}>
-                {live ? `● ${g.detail}` : post ? 'FINAL' : g.detail}
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[g.away, g.home].map((team, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {team.logo ? (
-                    <div style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: T.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Image src={team.logo} alt={team.name} width={22} height={22} style={{ objectFit: 'contain' }} unoptimized />
-                    </div>
-                  ) : (
-                    <div style={{
-                      width: 26, height: 26, background: team.color, borderRadius: 4, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 9, fontWeight: 800, color: '#fff', fontFamily: MONO,
-                    }}>{team.abbr.slice(0, 3)}</div>
-                  )}
-                  <span style={{ fontSize: DEN.font + 1, color: team.mine ? A.b : T.ink, fontWeight: team.mine ? 700 : 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {team.name}
-                  </span>
-                  {team.score !== undefined && (
-                    <span style={{
-                      fontFamily: MONO, fontSize: 18,
-                      fontWeight: team.winning ? 800 : 500,
-                      color: team.winning ? T.ink : T.muted,
-                      marginLeft: 'auto',
-                    }}>{team.score}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.muted }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{g.venue}</span>
-              <span>{g.broadcast}</span>
-            </div>
+                fontFamily: MONO, fontSize: 18,
+                fontWeight: team.winning ? 800 : 500,
+                color: team.winning ? T.ink : T.muted,
+                marginLeft: 'auto',
+              }}>{team.score}</span>
+            )}
           </div>
-        );
-      })}
+        ))}
+      </div>
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.muted }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{g.venue}</span>
+        <span>{g.broadcast}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── SectionGames (Yesterday / Today tabs) ────────────────────────────────────
+
+function SectionGames({ todayGames, yesterdayGames, T, A, DEN, onFocus }: {
+  todayGames: GameData[]; yesterdayGames: GameData[];
+  T: Tokens; A: Accent; DEN: Density; onFocus: (g: GameData) => void;
+}) {
+  const [tab, setTab] = useState<'today' | 'yesterday'>(todayGames.length ? 'today' : 'yesterday');
+  const games = tab === 'today' ? todayGames : yesterdayGames;
+
+  const tabStyle = (active: boolean) => ({
+    padding: '5px 14px', borderRadius: 6, fontSize: 10, fontWeight: 800,
+    letterSpacing: '0.12em', cursor: 'pointer', border: 'none', fontFamily: 'inherit',
+    background: active ? A.a : 'transparent',
+    color: active ? '#000' : T.muted,
+    transition: 'all .12s',
+  } as React.CSSProperties);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+        <button style={tabStyle(tab === 'today')}     onClick={() => setTab('today')}>TODAY</button>
+        <button style={tabStyle(tab === 'yesterday')} onClick={() => setTab('yesterday')}>YESTERDAY</button>
+      </div>
+      {!games.length ? (
+        <div style={{ padding: '32px', textAlign: 'center', color: T.muted, border: `1px dashed ${T.border}`, borderRadius: 8 }}>
+          No games {tab === 'today' ? 'scheduled today' : 'played yesterday'}.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: DEN.gap }}>
+          {games.slice(0, 9).map(g => (
+            <GameCard key={g.id} g={g} T={T} A={A} DEN={DEN} onFocus={onFocus} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -400,90 +460,164 @@ function SectionPlayers({ myPlayers, T, A, DEN }: {
   );
 }
 
-// ── SectionHeadlines ──────────────────────────────────────────────────────────
+// ── ArticleCard ───────────────────────────────────────────────────────────────
 
-function SectionHeadlines({ headlines, T, A, DEN }: {
-  headlines: ESPNNewsArticle[]; T: Tokens; A: Accent; DEN: Density;
+function ArticleCard({ h, T, A, featured = false }: {
+  h: ESPNNewsArticle; T: Tokens; A: Accent; featured?: boolean;
 }) {
-  if (!headlines.length) {
-    return (
-      <div style={{ padding: '32px', textAlign: 'center', color: T.muted, border: `1px dashed ${T.border}`, borderRadius: 8 }}>
-        No headlines available.
-      </div>
-    );
-  }
-  const lead   = headlines[0];
-  const rest   = headlines.slice(1, 5);
-  const leadImg = lead.images?.[0];
-  const leadUrl = lead.links?.web?.href;
-  const leadLeague = lead.categories?.find(c => c.type === 'league')?.description;
+  const url    = h.links?.web?.href;
+  const league = h.categories?.find(c => c.type === 'league')?.description;
+  const img    = h.images?.[0];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: DEN.gap }}>
-      {/* Lead */}
-      <a href={leadUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', gridRow: 'span 2' }}>
-        <div style={{
-          background: T.surface, borderRadius: 8, padding: DEN.padCard + 4,
-          border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 10, height: '100%',
-        }}>
-          <div style={{ height: 160, borderRadius: 6, overflow: 'hidden', background: 'linear-gradient(135deg, #0C2C56, #005C5C)', position: 'relative', flexShrink: 0 }}>
-            {leadImg && (
-              <Image src={leadImg.url} alt={lead.headline} fill style={{ objectFit: 'cover' }} unoptimized />
-            )}
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
+      <div style={{
+        background: T.surface, borderRadius: 8, padding: featured ? 18 : 14,
+        border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 8, height: '100%',
+      }}>
+        {featured && img && (
+          <div style={{ height: 140, borderRadius: 6, overflow: 'hidden', background: '#0C2C56', position: 'relative', flexShrink: 0 }}>
+            <Image src={img.url} alt={h.headline} fill style={{ objectFit: 'cover' }} unoptimized />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, color: A.a, letterSpacing: '0.18em' }}>
-              {leadLeague?.toUpperCase() ?? 'SPORTS'}
-            </span>
-            {lead.published && (
-              <span style={{ fontSize: 10, color: T.muted }}>· {timeAgo(lead.published)}</span>
-            )}
-          </div>
-          <h3 style={{ fontSize: 20, fontWeight: 800, color: T.ink, lineHeight: 1.25, margin: 0, letterSpacing: '-0.01em' }}>
-            {lead.headline}
-          </h3>
-          {lead.description && (
-            <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.5, margin: 0 }}>{lead.description}</p>
-          )}
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 9, fontWeight: 800, color: A.a, letterSpacing: '0.16em' }}>
+            {league?.toUpperCase() ?? 'SPORTS'}
+          </span>
+          {h.published && <span style={{ fontSize: 9, color: T.muted }}>· {timeAgo(h.published)}</span>}
         </div>
-      </a>
+        <div style={{ fontSize: featured ? 18 : 13, color: T.ink, lineHeight: 1.35, fontWeight: featured ? 800 : 600 }}>
+          {h.headline}
+        </div>
+        {featured && h.description && (
+          <p style={{ fontSize: 12, color: T.muted, lineHeight: 1.5, margin: 0 }}>{h.description}</p>
+        )}
+      </div>
+    </a>
+  );
+}
 
-      {/* Secondary */}
-      {rest.map((h, i) => {
-        const url    = h.links?.web?.href;
-        const league = h.categories?.find(c => c.type === 'league')?.description;
-        return (
-          <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-            <div style={{
-              background: T.surface, borderRadius: 8, padding: DEN.padCard,
-              border: `1px solid ${T.border}`, height: '100%',
-            }}>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontSize: 9, fontWeight: 800, color: A.a, letterSpacing: '0.16em' }}>
-                  {league?.toUpperCase() ?? 'SPORTS'}
-                </span>
-                {h.published && <span style={{ fontSize: 9, color: T.muted }}>· {timeAgo(h.published)}</span>}
-              </div>
-              <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.35, fontWeight: 600 }}>{h.headline}</div>
+// ── SectionHeadlines ──────────────────────────────────────────────────────────
+
+function SectionHeadlines({ teamNews, generalHeadlines, T, A, DEN }: {
+  teamNews: ESPNNewsArticle[]; generalHeadlines: ESPNNewsArticle[];
+  T: Tokens; A: Accent; DEN: Density;
+}) {
+  const hasTeamNews = teamNews.length > 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: DEN.sectionGap * 0.8 }}>
+      {hasTeamNews && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.2em', color: A.b, marginBottom: 10 }}>
+            MY TEAMS
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: DEN.gap }}>
+            {teamNews.slice(0, 3).map((h, i) => (
+              <ArticleCard key={i} h={h} T={T} A={A} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        {hasTeamNews && (
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.2em', color: T.muted, marginBottom: 10 }}>
+            TOP HEADLINES
+          </div>
+        )}
+        {!generalHeadlines.length ? (
+          <div style={{ padding: '32px', textAlign: 'center', color: T.muted, border: `1px dashed ${T.border}`, borderRadius: 8 }}>
+            No headlines available.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: DEN.gap }}>
+            <div style={{ gridRow: 'span 2' }}>
+              <ArticleCard h={generalHeadlines[0]} T={T} A={A} featured />
             </div>
-          </a>
-        );
-      })}
+            {generalHeadlines.slice(1, 5).map((h, i) => (
+              <ArticleCard key={i} h={h} T={T} A={A} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── PlayRow ───────────────────────────────────────────────────────────────────
+
+function PlayRow({ play, T, A, scoring }: { play: ESPNPlay; T: Tokens; A: Accent; scoring: boolean }) {
+  return (
+    <div style={{
+      padding: '8px 10px', borderRadius: 6,
+      background: scoring ? `${A.a}12` : T.surface2,
+      border: `1px solid ${scoring ? `${A.a}30` : T.border}`,
+      marginBottom: 4,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+        <span style={{ fontSize: 9, color: scoring ? A.a : T.muted, fontWeight: 700, letterSpacing: '0.12em' }}>
+          {scoring ? '⚡ SCORING' : play.clock?.displayValue ?? ''}
+          {play.period ? ` · Q${play.period.number}` : ''}
+        </span>
+        {play.awayScore !== undefined && play.homeScore !== undefined && (
+          <span style={{ fontSize: 9, fontFamily: MONO, color: T.muted }}>
+            {play.awayScore}–{play.homeScore}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: T.ink, lineHeight: 1.4 }}>{play.text}</div>
     </div>
   );
 }
 
 // ── FocusMode ─────────────────────────────────────────────────────────────────
 
-function FocusMode({ game, T, A, onClose }: { game: GameData | null; T: Tokens; A: Accent; onClose: () => void }) {
+function FocusMode({ liveMyGames, initialIdx, T, A, onClose }: {
+  liveMyGames: GameData[];
+  initialIdx: number;
+  T: Tokens; A: Accent;
+  onClose: () => void;
+}) {
+  const [idx, setIdx]         = useState(initialIdx);
+  const [summary, setSummary] = useState<GameSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const game = liveMyGames[Math.min(idx, liveMyGames.length - 1)] ?? null;
+
+  const fetchSummary = useCallback(async (g: GameData) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/sports/summary?sport=${g.sport}&league=${g.leagueKey}&eventId=${g.id}`);
+      if (res.ok) setSummary(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!game) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    setSummary(null);
+    fetchSummary(game);
+    if (game.state !== 'in') return;
+    const interval = setInterval(() => fetchSummary(game), 30_000);
+    return () => clearInterval(interval);
+  }, [game, fetchSummary]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft')  setIdx(i => (i - 1 + liveMyGames.length) % liveMyGames.length);
+      if (e.key === 'ArrowRight') setIdx(i => (i + 1) % liveMyGames.length);
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [game, onClose]);
+  }, [liveMyGames.length, onClose]);
 
   if (!game) return null;
+
+  const isSoccer = game.sport === 'soccer';
+  const isGolf   = game.sport === 'golf';
 
   return (
     <div style={{
@@ -493,7 +627,7 @@ function FocusMode({ game, T, A, onClose }: { game: GameData | null; T: Tokens; 
       animation: 'msFade 0.2s ease',
     }}>
       {/* Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: `1px solid ${T.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span style={{ background: A.a, color: '#000', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 800, letterSpacing: '0.18em' }}>
             ● FOCUS MODE
@@ -502,55 +636,131 @@ function FocusMode({ game, T, A, onClose }: { game: GameData | null; T: Tokens; 
             {game.league}{game.venue ? ` · ${game.venue}` : ''}{game.broadcast ? ` · ${game.broadcast}` : ''}
           </span>
         </div>
-        <button onClick={onClose} style={{
-          background: 'transparent', border: `1px solid ${T.border}`, color: T.ink,
-          padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700,
-          letterSpacing: '0.14em', cursor: 'pointer', fontFamily: 'inherit',
-        }}>EXIT ✕</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {liveMyGames.length > 1 && (
+            <>
+              <button onClick={() => setIdx(i => (i - 1 + liveMyGames.length) % liveMyGames.length)} style={{
+                background: 'transparent', border: `1px solid ${T.border}`, color: T.ink,
+                padding: '6px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+              }}>‹ PREV</button>
+              <span style={{ fontSize: 10, color: T.muted, fontFamily: MONO }}>{idx + 1}/{liveMyGames.length}</span>
+              <button onClick={() => setIdx(i => (i + 1) % liveMyGames.length)} style={{
+                background: 'transparent', border: `1px solid ${T.border}`, color: T.ink,
+                padding: '6px 12px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+              }}>NEXT ›</button>
+            </>
+          )}
+          <button onClick={onClose} style={{
+            background: 'transparent', border: `1px solid ${T.border}`, color: T.ink,
+            padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+            letterSpacing: '0.14em', cursor: 'pointer', fontFamily: 'inherit',
+          }}>EXIT ✕</button>
+        </div>
       </div>
 
       {/* Scoreboard */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ padding: '32px 40px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
         <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at 28% 50%, ${game.away.color}40, transparent 55%)`, pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at 72% 50%, ${game.home.color}40, transparent 55%)`, pointerEvents: 'none' }} />
 
-        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 56, maxWidth: 960, width: '100%' }}>
-          {/* Away */}
+        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 40, maxWidth: 900, margin: '0 auto' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, letterSpacing: '0.18em', color: T.muted, fontWeight: 700 }}>
-              {game.away.mine ? 'YOUR TEAM' : 'AWAY'}
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: T.ink, marginTop: 4 }}>{game.away.name}</div>
+            <div style={{ fontSize: 10, letterSpacing: '0.18em', color: T.muted, fontWeight: 700 }}>{game.away.mine ? 'YOUR TEAM' : 'AWAY'}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: T.ink, marginTop: 4 }}>{game.away.name}</div>
             {game.away.record && <div style={{ fontSize: 11, color: T.muted, fontFamily: MONO, marginTop: 2 }}>{game.away.record}</div>}
             <div style={{
-              fontSize: 140, fontWeight: 900, lineHeight: 0.85, marginTop: 16,
-              color: game.away.winning ? A.b : T.muted, fontFamily: MONO, letterSpacing: '-0.05em',
+              fontSize: 96, fontWeight: 900, lineHeight: 0.9, marginTop: 12,
+              color: game.away.winning ? A.b : T.muted, fontFamily: MONO, letterSpacing: '-0.04em',
               textShadow: game.away.winning ? `0 0 60px ${A.a}40` : 'none',
             }}>{game.away.score ?? '–'}</div>
           </div>
-
-          {/* Center */}
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 11, color: T.muted, letterSpacing: '0.2em', fontWeight: 700 }}>{game.detail}</div>
-            <div style={{ fontSize: 48, fontWeight: 100, color: T.muted, lineHeight: 1, margin: '12px 0', fontFamily: MONO }}>—</div>
+            <div style={{ fontSize: 36, fontWeight: 100, color: T.muted, lineHeight: 1, margin: '8px 0', fontFamily: MONO }}>—</div>
             <div style={{ fontSize: 10, color: T.muted, letterSpacing: '0.18em' }}>
               {game.state === 'post' ? 'FINAL' : game.state === 'pre' ? 'UPCOMING' : 'LIVE'}
             </div>
           </div>
-
-          {/* Home */}
           <div>
-            <div style={{ fontSize: 11, letterSpacing: '0.18em', color: T.muted, fontWeight: 700 }}>
-              {game.home.mine ? 'YOUR TEAM' : 'HOME'}
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: T.ink, marginTop: 4 }}>{game.home.name}</div>
+            <div style={{ fontSize: 10, letterSpacing: '0.18em', color: T.muted, fontWeight: 700 }}>{game.home.mine ? 'YOUR TEAM' : 'HOME'}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: T.ink, marginTop: 4 }}>{game.home.name}</div>
             {game.home.record && <div style={{ fontSize: 11, color: T.muted, fontFamily: MONO, marginTop: 2 }}>{game.home.record}</div>}
             <div style={{
-              fontSize: 140, fontWeight: 900, lineHeight: 0.85, marginTop: 16,
-              color: game.home.winning ? A.b : T.muted, fontFamily: MONO, letterSpacing: '-0.05em',
+              fontSize: 96, fontWeight: 900, lineHeight: 0.9, marginTop: 12,
+              color: game.home.winning ? A.b : T.muted, fontFamily: MONO, letterSpacing: '-0.04em',
             }}>{game.home.score ?? '–'}</div>
           </div>
         </div>
+      </div>
+
+      {/* Plays panel */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '0 40px 32px', maxWidth: 900, margin: '0 auto', width: '100%' }}>
+        {loading && !summary && (
+          <div style={{ textAlign: 'center', color: T.muted, padding: 20, fontSize: 12 }}>Loading plays…</div>
+        )}
+
+        {summary && !isGolf && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            {/* Scoring plays */}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.2em', color: A.a, marginBottom: 10 }}>
+                {isSoccer ? 'GOALS' : 'SCORING PLAYS'}
+              </div>
+              {summary.scoringPlays.length === 0 ? (
+                <div style={{ fontSize: 12, color: T.muted, padding: '12px 0' }}>No scoring plays yet.</div>
+              ) : (
+                summary.scoringPlays.map((p, i) => <PlayRow key={i} play={p} T={T} A={A} scoring />)
+              )}
+            </div>
+
+            {/* Recent plays — soccer only shows goal timeline so skip this column for soccer */}
+            {!isSoccer && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.2em', color: T.muted, marginBottom: 10 }}>
+                  LAST 5 PLAYS
+                </div>
+                {summary.recentPlays.length === 0 ? (
+                  <div style={{ fontSize: 12, color: T.muted, padding: '12px 0' }}>No plays yet.</div>
+                ) : (
+                  summary.recentPlays.map((p, i) => <PlayRow key={i} play={p} T={T} A={A} scoring={false} />)
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {summary && isGolf && summary.golfLeaderboard && (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.2em', color: A.b, marginBottom: 12 }}>LEADERBOARD</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {summary.golfLeaderboard.map((c, i) => {
+                const scoreStat = c.statistics?.find(s => s.name === 'scoreToPar' || s.name === 'score');
+                return (
+                  <div key={c.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 14, padding: '10px 14px',
+                    background: i === 0 ? `${A.b}15` : T.surface2, borderRadius: 6,
+                    border: `1px solid ${i === 0 ? `${A.b}30` : T.border}`,
+                  }}>
+                    <span style={{ fontFamily: MONO, fontSize: 13, color: T.muted, width: 24, textAlign: 'right' }}>
+                      {i + 1}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: i === 0 ? A.b : T.ink, flex: 1 }}>
+                      {c.displayName}
+                    </span>
+                    <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 800, color: i === 0 ? A.b : T.ink }}>
+                      {scoreStat?.displayValue ?? c.score ?? '–'}
+                    </span>
+                    {c.status?.displayValue && (
+                      <span style={{ fontSize: 10, color: T.muted, letterSpacing: '0.1em' }}>
+                        {c.status.displayValue}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -665,7 +875,10 @@ function ToggleControl({ value, onChange, A }: { value: boolean; onChange: (v: b
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function DashboardClient({
-  userName, dateLabel, liveMyTeamCount, games, myTeams, myPlayers, headlines,
+  userName, dateLabel, liveMyTeamCount,
+  todayGames, yesterdayGames,
+  myTeams, myPlayers,
+  generalHeadlines, teamNews,
 }: DashboardClientProps) {
   const [tweaks, setTweaks] = useState<TweaksState>({
     theme: 'dark', density: 'cozy', accent: 'coral',
@@ -673,10 +886,9 @@ export default function DashboardClient({
   });
   const set = (k: string, v: unknown) => setTweaks(t => ({ ...t, [k]: v }));
 
-  const [order, setOrder] = useState<string[]>(DEFAULT_ORDER);
+  const [order, setOrder]               = useState<string[]>(DEFAULT_ORDER);
   const [savedSnapshot, setSavedSnapshot] = useState<string[] | null>(null);
 
-  // Load saved order from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -690,9 +902,9 @@ export default function DashboardClient({
 
   const dirty = JSON.stringify(order) !== JSON.stringify(savedSnapshot ?? DEFAULT_ORDER);
 
-  const [dragId, setDragId]   = useState<string | null>(null);
-  const [overId, setOverId]   = useState<string | null>(null);
-  const [focusGame, setFocusGame] = useState<GameData | null>(null);
+  const [dragId, setDragId]     = useState<string | null>(null);
+  const [overId, setOverId]     = useState<string | null>(null);
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
   const [showTweaks, setShowTweaks] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
 
@@ -700,10 +912,17 @@ export default function DashboardClient({
   const A   = ACCENTS[tweaks.accent];
   const DEN = DENSITY[tweaks.density];
 
+  const liveMyGames = todayGames.filter(g => g.state === 'in' && (g.away.mine || g.home.mine));
+
   const greetingMsg =
     liveMyTeamCount === 0 ? "What's happening in sports today." :
     liveMyTeamCount === 1 ? 'One of yours is live.' :
     `${liveMyTeamCount} of yours are live.`;
+
+  const openFocus = (g: GameData, idx?: number) => {
+    const i = idx ?? liveMyGames.findIndex(x => x.id === g.id);
+    setFocusIdx(i >= 0 ? i : 0);
+  };
 
   const onDragStart = (id: string) => (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move';
@@ -737,22 +956,24 @@ export default function DashboardClient({
     setSavedSnapshot(null);
   };
 
-  const isVisible     = (id: string) => tweaks.visible[id] !== false;
+  const isVisible      = (id: string) => tweaks.visible[id] !== false;
   const orderedVisible = order.filter(isVisible);
 
-  const SECTION_META: Record<string, { title: string; count?: number; action?: string }> = {
-    games:     { title: "Today's games", count: games.length,     action: 'ALL →' },
-    teams:     { title: 'My teams',      count: myTeams.length,   action: 'MANAGE →' },
+  const totalGames = todayGames.length + yesterdayGames.length;
+
+  const SECTION_META: Record<string, { title: string; count?: number; action?: string; actionHref?: string }> = {
+    games:     { title: "Today's games", count: totalGames,      action: 'SCOREBOARD →', actionHref: '/scoreboard' },
+    teams:     { title: 'My teams',      count: myTeams.length,  action: 'MANAGE →' },
     players:   { title: 'My players',    count: myPlayers.length },
-    headlines: { title: 'Headlines',     count: headlines.length, action: 'ALL NEWS →' },
+    headlines: { title: 'Headlines',     count: (teamNews.length + generalHeadlines.length), action: 'ALL NEWS →', actionHref: '/headlines' },
   };
 
   const renderSection = (id: string) => {
     switch (id) {
-      case 'games':     return <SectionGames     games={games}         T={T} A={A} DEN={DEN} onFocus={setFocusGame} />;
+      case 'games':     return <SectionGames     todayGames={todayGames} yesterdayGames={yesterdayGames} T={T} A={A} DEN={DEN} onFocus={openFocus} />;
       case 'teams':     return <SectionTeams     myTeams={myTeams}     T={T} A={A} DEN={DEN} />;
       case 'players':   return <SectionPlayers   myPlayers={myPlayers} T={T} A={A} DEN={DEN} />;
-      case 'headlines': return <SectionHeadlines headlines={headlines} T={T} A={A} DEN={DEN} />;
+      case 'headlines': return <SectionHeadlines teamNews={teamNews} generalHeadlines={generalHeadlines} T={T} A={A} DEN={DEN} />;
       default:          return null;
     }
   };
@@ -761,14 +982,12 @@ export default function DashboardClient({
 
   return (
     <div style={{ background: T.bg, color: T.ink, minHeight: '100vh', fontFamily: '"Inter", system-ui, -apple-system, sans-serif' }}>
-      {/* Sticky ticker (below fixed navbar) */}
       {tweaks.showTicker && (
         <div style={{ position: 'sticky', top: 64, zIndex: 5 }}>
-          <Ticker games={games} T={T} A={A} />
+          <Ticker games={todayGames} T={T} A={A} />
         </div>
       )}
 
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '20px 0 0', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <div style={{ fontSize: 11, color: T.muted, letterSpacing: '0.18em', fontWeight: 700 }}>{dateLabel}</div>
@@ -778,9 +997,7 @@ export default function DashboardClient({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {dirty && (
-            <span style={{ fontSize: 10, color: A.a, letterSpacing: '0.14em', fontWeight: 700 }}>● UNSAVED</span>
-          )}
+          {dirty && <span style={{ fontSize: 10, color: A.a, letterSpacing: '0.14em', fontWeight: 700 }}>● UNSAVED</span>}
           <button onClick={resetLayout} style={{
             background: 'transparent', border: `1px solid ${T.border}`, color: T.muted,
             padding: '7px 12px', borderRadius: 8, fontSize: 10, letterSpacing: '0.12em', fontWeight: 700,
@@ -801,9 +1018,8 @@ export default function DashboardClient({
         </div>
       </div>
 
-      {tweaks.showLiveBanner && <LiveBanner games={games} T={T} A={A} onFocus={setFocusGame} />}
+      {tweaks.showLiveBanner && <LiveBanner games={todayGames} T={T} A={A} onFocus={openFocus} />}
 
-      {/* Sections */}
       <div style={{ paddingTop: 24 }}>
         {orderedVisible.map(id => {
           const meta = SECTION_META[id];
@@ -825,6 +1041,7 @@ export default function DashboardClient({
                 title={meta.title}
                 count={meta.count}
                 action={meta.action}
+                actionHref={meta.actionHref}
                 T={T} A={A}
                 onDragStart={onDragStart(id)}
                 onDragEnd={() => { setDragId(null); setOverId(null); }}
@@ -844,7 +1061,15 @@ export default function DashboardClient({
       </div>
 
       {showTweaks && <TweaksPanel tweaks={tweaks} set={set} T={T} A={A} sections={sectionList} />}
-      <FocusMode game={focusGame} T={T} A={A} onClose={() => setFocusGame(null)} />
+
+      {focusIdx !== null && liveMyGames.length > 0 && (
+        <FocusMode
+          liveMyGames={liveMyGames}
+          initialIdx={focusIdx}
+          T={T} A={A}
+          onClose={() => setFocusIdx(null)}
+        />
+      )}
 
       {savedToast && (
         <div style={{

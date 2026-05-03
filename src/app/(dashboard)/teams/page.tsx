@@ -8,11 +8,14 @@ import { useFavoriteTeams, useToggleFavoriteTeam } from '@/hooks/useFavorites';
 import type { ESPNTeam } from '@/types';
 
 const SPORTS = [
-  { key: 'nfl', sport: 'football', league: 'nfl', name: 'NFL', emoji: '🏈' },
-  { key: 'nba', sport: 'basketball', league: 'nba', name: 'NBA', emoji: '🏀' },
-  { key: 'mlb', sport: 'baseball', league: 'mlb', name: 'MLB', emoji: '⚾' },
-  { key: 'nhl', sport: 'hockey', league: 'nhl', name: 'NHL', emoji: '🏒' },
-  { key: 'mls', sport: 'soccer', league: 'usa.1', name: 'MLS', emoji: '⚽' },
+  { key: 'nfl',    sport: 'football',   league: 'nfl',   name: 'NFL',      emoji: '🏈' },
+  { key: 'nba',    sport: 'basketball', league: 'nba',   name: 'NBA',      emoji: '🏀' },
+  { key: 'mlb',    sport: 'baseball',   league: 'mlb',   name: 'MLB',      emoji: '⚾' },
+  { key: 'nhl',    sport: 'hockey',     league: 'nhl',   name: 'NHL',      emoji: '🏒' },
+  { key: 'mls',    sport: 'soccer',     league: 'usa.1', name: 'MLS',      emoji: '⚽' },
+  { key: 'laliga', sport: 'soccer',     league: 'esp.1', name: 'La Liga',  emoji: '🇪🇸' },
+  { key: 'epl',    sport: 'soccer',     league: 'eng.1', name: 'EPL',      emoji: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+  { key: 'pga',    sport: 'golf',       league: 'pga',   name: 'PGA Tour', emoji: '⛳' },
 ] as const;
 
 export default function TeamsPage() {

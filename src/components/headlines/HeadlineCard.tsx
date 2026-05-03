@@ -39,6 +39,7 @@ export function HeadlineCard({ article }: HeadlineCardProps) {
             fill
             className="object-cover group-hover:scale-105 transition-transform"
             sizes="128px"
+            unoptimized
           />
         </div>
       )}
