@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Trophy, Newspaper, BarChart2, X } from 'lucide-react';
+import { LayoutDashboard, Trophy, Newspaper, BarChart2, Gamepad2, X } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { href: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard },
-  { href: '/scoreboard', label: 'Scoreboard', icon: BarChart2 },
+  { href: '/dashboard',  label: 'Dashboard',    icon: LayoutDashboard },
+  { href: '/scoreboard', label: 'Scoreboard',   icon: BarChart2 },
+  { href: '/fantasy',    label: 'Fantasy',      icon: Gamepad2 },
   { href: '/teams',      label: 'Browse Teams', icon: Trophy },
-  { href: '/headlines',  label: 'Headlines',  icon: Newspaper },
+  { href: '/headlines',  label: 'Headlines',    icon: Newspaper },
 ];
 
 interface SidebarProps {

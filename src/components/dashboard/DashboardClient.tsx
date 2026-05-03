@@ -32,6 +32,7 @@ export interface GameData {
   home: GameTeam;
   venue?: string;
   broadcast?: string;
+  espnLink?: string;
 }
 
 interface DashboardClientProps {
@@ -77,6 +78,7 @@ type Density = typeof DENSITY.cozy;
 
 const DEFAULT_ORDER = ['games', 'teams', 'players', 'headlines'];
 const STORAGE_KEY   = 'ms_v3_layout_v1';
+const TWEAKS_KEY    = 'ms_v3_tweaks_v1';
 const MONO = 'var(--font-mono), ui-monospace, monospace';
 
 // ── Ticker ────────────────────────────────────────────────────────────────────
@@ -203,15 +205,33 @@ function LiveBanner({ games, T, A, onFocus }: {
 
 // ── SectionHead ───────────────────────────────────────────────────────────────
 
-function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDragEnd, dragging }: {
+function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDragEnd, dragging, onMoveUp, onMoveDown }: {
   title: string; count?: number | string; action?: string; actionHref?: string;
   T: Tokens; A: Accent;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   dragging: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
+  const moveBtn = (label: string, onClick?: () => void) => (
+    <button
+      onClick={onClick} disabled={!onClick}
+      style={{
+        background: 'transparent', border: `1px solid ${T.border}`,
+        color: onClick ? T.muted : 'transparent',
+        width: 22, height: 22, borderRadius: 4, cursor: onClick ? 'pointer' : 'default',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 11, lineHeight: 1, padding: 0, flexShrink: 0,
+        transition: 'color .12s, border-color .12s',
+      }}
+      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLElement).style.color = T.ink; }}
+      onMouseLeave={e => { if (onClick) (e.currentTarget as HTMLElement).style.color = T.muted; }}
+    >{label}</button>
+  );
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 14 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 14 }}>
       <span
         draggable
         onDragStart={onDragStart}
@@ -223,13 +243,16 @@ function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDr
         }}
         title="Drag to reorder"
       >⋮⋮</span>
+      {/* UP / DOWN for mobile & keyboard users */}
+      {moveBtn('↑', onMoveUp)}
+      {moveBtn('↓', onMoveDown)}
       <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.22em', color: T.ink, textTransform: 'uppercase' }}>
         {title}
       </span>
       {count != null && (
         <span style={{ fontSize: 10, color: T.muted, fontFamily: MONO }}>· {count}</span>
       )}
-      <div style={{ flex: 1, height: 1, background: T.border, marginLeft: 8 }} />
+      <div style={{ flex: 1, height: 1, background: T.border, marginLeft: 4 }} />
       {action && actionHref ? (
         <Link href={actionHref} style={{ textDecoration: 'none' }}>
           <span style={{ fontSize: 10, color: A.b, letterSpacing: '0.14em', fontWeight: 700, cursor: 'pointer' }}>
@@ -252,7 +275,8 @@ function GameCard({ g, T, A, DEN, onFocus }: {
 }) {
   const live = g.state === 'in';
   const post = g.state === 'post';
-  return (
+
+  const inner = (
     <div
       onClick={() => live && onFocus(g)}
       style={{
@@ -260,6 +284,7 @@ function GameCard({ g, T, A, DEN, onFocus }: {
         border: `1px solid ${live ? 'rgba(255,90,77,0.4)' : T.border}`,
         padding: DEN.padCard, position: 'relative', overflow: 'hidden',
         cursor: live ? 'pointer' : 'default',
+        transition: 'border-color .12s',
       }}
     >
       {live && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: A.a }} />}
@@ -300,12 +325,31 @@ function GameCard({ g, T, A, DEN, onFocus }: {
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.muted }}>
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: T.muted }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>{g.venue}</span>
-        <span>{g.broadcast}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {g.broadcast && <span>{g.broadcast}</span>}
+          {live && g.espnLink && (
+            <a href={g.espnLink} target="_blank" rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              style={{ color: A.b, fontWeight: 700, letterSpacing: '0.1em', textDecoration: 'none', fontSize: 9 }}
+            >ESPN ↗</a>
+          )}
+        </div>
       </div>
     </div>
   );
+
+  // Non-live cards: wrap the whole card as an ESPN link
+  if (!live && g.espnLink) {
+    return (
+      <a href={g.espnLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block' }}
+        onMouseEnter={e => ((e.currentTarget.firstChild as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)')}
+        onMouseLeave={e => ((e.currentTarget.firstChild as HTMLElement).style.borderColor = T.border)}
+      >{inner}</a>
+    );
+  }
+  return inner;
 }
 
 // ── SectionGames (Yesterday / Today tabs) ────────────────────────────────────
@@ -888,17 +932,30 @@ export default function DashboardClient({
 
   const [order, setOrder]               = useState<string[]>(DEFAULT_ORDER);
   const [savedSnapshot, setSavedSnapshot] = useState<string[] | null>(null);
+  const initialized = React.useRef(false);
 
+  // Load persisted order + tweaks on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as string[];
+      const savedOrder = localStorage.getItem(STORAGE_KEY);
+      if (savedOrder) {
+        const parsed = JSON.parse(savedOrder) as string[];
         setOrder(parsed);
         setSavedSnapshot(parsed);
       }
     } catch {}
+    try {
+      const savedTweaks = localStorage.getItem(TWEAKS_KEY);
+      if (savedTweaks) setTweaks(t => ({ ...t, ...(JSON.parse(savedTweaks) as Partial<TweaksState>) }));
+    } catch {}
+    initialized.current = true;
   }, []);
+
+  // Auto-save tweaks whenever they change (after initial load)
+  useEffect(() => {
+    if (!initialized.current) return;
+    try { localStorage.setItem(TWEAKS_KEY, JSON.stringify(tweaks)); } catch {}
+  }, [tweaks]);
 
   const dirty = JSON.stringify(order) !== JSON.stringify(savedSnapshot ?? DEFAULT_ORDER);
 
@@ -954,6 +1011,17 @@ export default function DashboardClient({
     setOrder(DEFAULT_ORDER);
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
     setSavedSnapshot(null);
+  };
+
+  const moveSection = (id: string, dir: -1 | 1) => {
+    setOrder(prev => {
+      const idx = prev.indexOf(id);
+      const next = idx + dir;
+      if (idx < 0 || next < 0 || next >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
   };
 
   const isVisible      = (id: string) => tweaks.visible[id] !== false;
@@ -1046,6 +1114,8 @@ export default function DashboardClient({
                 onDragStart={onDragStart(id)}
                 onDragEnd={() => { setDragId(null); setOverId(null); }}
                 dragging={dragId === id}
+                onMoveUp={orderedVisible.indexOf(id) > 0 ? () => moveSection(id, -1) : undefined}
+                onMoveDown={orderedVisible.indexOf(id) < orderedVisible.length - 1 ? () => moveSection(id, 1) : undefined}
               />
               {renderSection(id)}
             </div>

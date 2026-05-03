@@ -25,6 +25,13 @@ function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10).replace(/-/g, '');
 }
 
+function espnGameUrl(sport: string, league: string, gameId: string): string {
+  if (sport === 'golf') return 'https://www.espn.com/golf/leaderboard';
+  if (sport === 'soccer') return `https://www.espn.com/soccer/match/_/gameId/${gameId}`;
+  const slug: Record<string, string> = { football: 'nfl', basketball: 'nba', baseball: 'mlb', hockey: 'nhl' };
+  return `https://www.espn.com/${slug[sport] ?? league}/game/_/gameId/${gameId}`;
+}
+
 function parseGameDate(game: ESPNGame): string {
   const comp = game.competitions?.[0];
   // ESPN returns ISO dates like "2026-05-03T..." — strip time and dashes to match formatDate() output
@@ -81,6 +88,7 @@ function transformGame(
     },
     venue:     comp.venue?.fullName,
     broadcast: comp.broadcasts?.[0]?.names?.[0],
+    espnLink:  espnGameUrl(game.sport, game.leagueKey, game.id),
   };
 }
 

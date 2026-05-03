@@ -26,11 +26,27 @@ export interface ScoreGame {
   espnLink?: string;
 }
 
+export interface GolfLeader {
+  order: number;
+  name: string;
+  score: string;
+  thru?: string;
+}
+
+export interface GolfTournament {
+  name: string;
+  status: 'pre' | 'in' | 'post';
+  statusDetail: string;
+  leaders: GolfLeader[];
+  espnLink?: string;
+}
+
 export interface ScoreSection {
   key: string;
   name: string;
   color: string;
   games: ScoreGame[];
+  golfTournament?: GolfTournament;
 }
 
 interface ScoreboardClientProps {
@@ -113,6 +129,53 @@ function GameCard({ g }: { g: ScoreGame }) {
   return inner;
 }
 
+function GolfCard({ t }: { t: GolfTournament }) {
+  const live = t.status === 'in';
+  const post = t.status === 'post';
+
+  const inner = (
+    <div style={{
+      background: '#121A30', borderRadius: 8, padding: 16,
+      border: `1px solid ${live ? 'rgba(255,90,77,0.4)' : 'rgba(255,255,255,0.07)'}`,
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {live && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: '#FF5A4D' }} />}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#F0F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+          {t.name}
+        </span>
+        <span style={{ fontSize: 9, fontWeight: 800, fontFamily: MONO, letterSpacing: '0.12em', flexShrink: 0,
+          color: live ? '#FF5A4D' : post ? '#8392B5' : '#F0F4FF' }}>
+          {live ? `● ${t.statusDetail}` : post ? 'FINAL' : t.statusDetail}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {t.leaders.slice(0, 5).map((p, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, color: '#8392B5', width: 16, textAlign: 'right', flexShrink: 0 }}>{p.order}</span>
+            <span style={{ flex: 1, fontSize: 12, color: i === 0 ? '#FFD166' : '#F0F4FF', fontWeight: i === 0 ? 700 : 400,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: i === 0 ? 800 : 500,
+              color: i === 0 ? '#F0F4FF' : '#8392B5' }}>{p.score}</span>
+            {p.thru && <span style={{ fontSize: 9, color: '#8392B5', fontFamily: MONO, flexShrink: 0 }}>{p.thru}</span>}
+          </div>
+        ))}
+      </div>
+      {t.espnLink && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 9, color: '#8392B5', letterSpacing: '0.1em', fontWeight: 600 }}>
+          ESPN ↗
+        </div>
+      )}
+    </div>
+  );
+
+  return t.espnLink ? (
+    <a href={t.espnLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block' }}>
+      {inner}
+    </a>
+  ) : inner;
+}
+
 export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClientProps) {
   const defaultOrder    = sections.map(s => s.key);
   const [order, setOrder]           = useState<string[]>(defaultOrder);
@@ -167,6 +230,18 @@ export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClie
   };
   const onDragEnd = () => { setDragId(null); setOverId(null); };
 
+  const moveSection = (key: string, dir: -1 | 1) => {
+    setOrder(prev => {
+      const idx = prev.indexOf(key);
+      const next = idx + dir;
+      if (idx < 0 || next < 0 || next >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      persist(arr, collapsed);
+      return arr;
+    });
+  };
+
   const sectionMap = Object.fromEntries(sections.map(s => [s.key, s]));
   const ordered = order.filter(k => sectionMap[k]).map(k => sectionMap[k]);
   const missing = sections.filter(s => !order.includes(s.key));
@@ -189,15 +264,34 @@ export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClie
         <span style={{ fontSize: 11, color: '#8392B5', letterSpacing: '0.16em', fontWeight: 700 }}>{dateLabel}</span>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 10, color: '#8392B5', letterSpacing: '0.12em' }}>
-          DRAG HEADERS TO REORDER
+          DRAG OR USE ↑↓ TO REORDER
         </span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-        {visible.map(section => {
+        {visible.map((section, visIdx) => {
           const isOver      = overId === section.key && dragId !== section.key;
           const isDragging  = dragId === section.key;
           const isCollapsed = !!collapsed[section.key];
+          const isGolf      = !!section.golfTournament;
+          const gameCount   = isGolf ? 1 : section.games.length;
+
+          const moveBtn = (label: string, disabled: boolean, dir: -1 | 1) => (
+            <button
+              onClick={e => { e.stopPropagation(); if (!disabled) moveSection(section.key, dir); }}
+              onMouseDown={e => e.stopPropagation()}
+              disabled={disabled}
+              style={{
+                background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+                color: disabled ? 'transparent' : '#8392B5',
+                width: 22, height: 22, borderRadius: 4, cursor: disabled ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, lineHeight: 1, padding: 0, flexShrink: 0,
+              }}
+              onMouseEnter={e => { if (!disabled) (e.currentTarget as HTMLElement).style.color = '#F0F4FF'; }}
+              onMouseLeave={e => { if (!disabled) (e.currentTarget as HTMLElement).style.color = '#8392B5'; }}
+            >{label}</button>
+          );
 
           return (
             <div
@@ -217,18 +311,20 @@ export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClie
                 draggable
                 onDragStart={onDragStart(section.key)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 12, marginBottom: isCollapsed ? 0 : 16,
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: isCollapsed ? 0 : 16,
                   cursor: 'grab', userSelect: 'none',
                 }}
               >
+                {moveBtn('↑', visIdx === 0, -1)}
+                {moveBtn('↓', visIdx === visible.length - 1, 1)}
                 <div style={{ width: 10, height: 10, borderRadius: 999, background: section.color, flexShrink: 0 }} />
                 <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.22em', color: '#F0F4FF', textTransform: 'uppercase' }}>
                   {section.name}
                 </span>
                 <span style={{ fontSize: 10, color: '#8392B5', fontFamily: MONO }}>
-                  · {section.games.length} game{section.games.length !== 1 ? 's' : ''}
+                  · {gameCount} {isGolf ? 'tournament' : `game${gameCount !== 1 ? 's' : ''}`}
                 </span>
-                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)', marginLeft: 8 }} />
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)', marginLeft: 4 }} />
 
                 {/* Collapse toggle */}
                 <button
@@ -248,13 +344,19 @@ export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClie
                 </button>
               </div>
 
-              {/* Games grid */}
+              {/* Content */}
               {!isCollapsed && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-                  {section.games.map(g => (
-                    <GameCard key={g.id} g={g} />
-                  ))}
-                </div>
+                isGolf ? (
+                  <div style={{ maxWidth: 320 }}>
+                    <GolfCard t={section.golfTournament!} />
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+                    {section.games.map(g => (
+                      <GameCard key={g.id} g={g} />
+                    ))}
+                  </div>
+                )
               )}
             </div>
           );

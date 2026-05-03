@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { getScoreboard } from '@/lib/api/espn';
 import type { Metadata } from 'next';
 import type { ESPNGame } from '@/types';
-import ScoreboardClient, { type ScoreSection, type ScoreGame } from '@/components/scoreboard/ScoreboardClient';
+import ScoreboardClient, { type ScoreSection, type ScoreGame, type GolfTournament } from '@/components/scoreboard/ScoreboardClient';
 
 export const metadata: Metadata = { title: 'Scoreboard' };
 
@@ -23,6 +23,44 @@ const LEAGUES = [
 
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+interface ESPNGolfCompetitor {
+  order?: number;
+  score?: string;
+  athlete?: { displayName?: string };
+  status?: { thru?: string; displayValue?: string };
+}
+
+interface ESPNGolfEvent {
+  id: string;
+  name?: string;
+  status?: { type?: { state?: string; description?: string } };
+  competitions?: Array<{ competitors?: ESPNGolfCompetitor[] }>;
+  links?: Array<{ rel?: string[]; href?: string }>;
+}
+
+function buildGolfTournament(events: ESPNGolfEvent[]): GolfTournament | undefined {
+  const event = events[0];
+  if (!event) return undefined;
+  const comp = event.competitions?.[0];
+  const competitors = comp?.competitors ?? [];
+  const sorted = [...competitors].sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  const leaders = sorted.slice(0, 10).map(c => ({
+    order:  c.order ?? 0,
+    name:   c.athlete?.displayName ?? 'Unknown',
+    score:  c.score ?? '–',
+    thru:   c.status?.thru ?? c.status?.displayValue,
+  }));
+  const state  = (event.status?.type?.state ?? 'pre') as 'pre' | 'in' | 'post';
+  const espnLink = event.links?.find(l => l.rel?.includes('desktop'))?.href;
+  return {
+    name:         event.name ?? 'PGA Tour Event',
+    status:       state,
+    statusDetail: event.status?.type?.description ?? '',
+    leaders,
+    espnLink,
+  };
 }
 
 function espnGameUrl(sport: string, league: string, gameId: string): string {
@@ -88,7 +126,14 @@ export default async function ScoreboardPage() {
   // Composite key prevents cross-sport teamId collisions (e.g. Seahawks & Giants both = id "26")
   const myTeamKeys = new Set(myTeams.map(t => `${t.teamId}:${t.league}`));
 
-  const sections: ScoreSection[] = LEAGUES.map((l, i) => {
+  const sections: ScoreSection[] = (LEAGUES.map((l, i) => {
+    // Golf tournaments have a different data shape — handle separately
+    if (l.sport === 'golf') {
+      const golfTournament = buildGolfTournament(scoreResults[i] as ESPNGolfEvent[]);
+      if (!golfTournament) return null;
+      return { key: l.key, name: l.name, color: l.color, games: [], golfTournament };
+    }
+
     const rawGames = (scoreResults[i] as ESPNGame[]) ?? [];
     const games = rawGames
       .map(g => transformGame(g, myTeamKeys, l.sport, l.league))
@@ -102,7 +147,7 @@ export default async function ScoreboardPage() {
     });
 
     return { key: l.key, name: l.name, color: l.color, games };
-  }).filter(s => s.games.length > 0);
+  }) as Array<ScoreSection | null>).filter((s): s is ScoreSection => s !== null && (s.games.length > 0 || !!s.golfTournament));
 
   const now = new Date();
   const dateLabel = now
