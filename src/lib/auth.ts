@@ -14,17 +14,19 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        const email = credentials?.email?.toString().trim().toLowerCase();
+        const password = credentials?.password?.toString();
+        if (!email || !password) return null;
 
         const [user] = await db
           .select()
           .from(users)
-          .where(eq(users.email, credentials.email.toLowerCase()))
+          .where(eq(users.email, email))
           .limit(1);
 
         if (!user) return null;
 
-        const valid = await bcrypt.compare(credentials.password, user.passwordHash);
+        const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
         return { id: user.id, email: user.email, name: user.name };
