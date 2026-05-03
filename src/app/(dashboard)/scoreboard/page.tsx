@@ -25,7 +25,16 @@ function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10).replace(/-/g, '');
 }
 
-function transformGame(game: ESPNGame, myTeamIds: Set<string>): ScoreGame | null {
+function espnGameUrl(sport: string, league: string, gameId: string): string {
+  if (sport === 'golf') return `https://www.espn.com/golf/leaderboard`;
+  if (sport === 'soccer') return `https://www.espn.com/soccer/match/_/gameId/${gameId}`;
+  const leagueSlug: Record<string, string> = {
+    football: 'nfl', basketball: 'nba', baseball: 'mlb', hockey: 'nhl',
+  };
+  return `https://www.espn.com/${leagueSlug[sport] ?? league}/game/_/gameId/${gameId}`;
+}
+
+function transformGame(game: ESPNGame, myTeamKeys: Set<string>, sport: string, league: string): ScoreGame | null {
   const comp = game.competitions?.[0];
   if (!comp) return null;
   const away = comp.competitors.find(c => c.homeAway === 'away');
@@ -46,7 +55,7 @@ function transformGame(game: ESPNGame, myTeamIds: Set<string>): ScoreGame | null
       name:    away.team.displayName,
       logo:    away.team.logos?.[0]?.href,
       score:   away.score,
-      mine:    myTeamIds.has(away.team.id),
+      mine:    myTeamKeys.has(`${away.team.id}:${league}`),
       winning: state === 'post' ? !!away.winner
         : (awayN !== undefined && homeN !== undefined ? awayN > homeN : false),
     },
@@ -55,12 +64,13 @@ function transformGame(game: ESPNGame, myTeamIds: Set<string>): ScoreGame | null
       name:    home.team.displayName,
       logo:    home.team.logos?.[0]?.href,
       score:   home.score,
-      mine:    myTeamIds.has(home.team.id),
+      mine:    myTeamKeys.has(`${home.team.id}:${league}`),
       winning: state === 'post' ? !!home.winner
         : (awayN !== undefined && homeN !== undefined ? homeN > awayN : false),
     },
     venue:     comp.venue?.fullName,
     broadcast: comp.broadcasts?.[0]?.names?.[0],
+    espnLink:  espnGameUrl(sport, league, game.id),
   };
 }
 
@@ -75,12 +85,13 @@ export default async function ScoreboardPage() {
     ...LEAGUES.map(l => getScoreboard(l.sport, l.league, todayStr)),
   ]);
 
-  const myTeamIds = new Set(myTeams.map(t => t.teamId));
+  // Composite key prevents cross-sport teamId collisions (e.g. Seahawks & Giants both = id "26")
+  const myTeamKeys = new Set(myTeams.map(t => `${t.teamId}:${t.league}`));
 
   const sections: ScoreSection[] = LEAGUES.map((l, i) => {
     const rawGames = (scoreResults[i] as ESPNGame[]) ?? [];
     const games = rawGames
-      .map(g => transformGame(g, myTeamIds))
+      .map(g => transformGame(g, myTeamKeys, l.sport, l.league))
       .filter((g): g is ScoreGame => g !== null);
 
     // Favorites first, then live, then scheduled, then final

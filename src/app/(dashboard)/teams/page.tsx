@@ -109,7 +109,7 @@ export default function TeamsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {filtered.map((team) => {
             const fav = favorites?.find(
-              (f) => f.teamId === team.id && f.sport === selected.sport
+              (f) => f.teamId === team.id && f.league === selected.league
             );
             return (
               <TeamCard

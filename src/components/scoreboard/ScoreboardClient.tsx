@@ -23,6 +23,7 @@ export interface ScoreGame {
   home: ScoreTeam;
   venue?: string;
   broadcast?: string;
+  espnLink?: string;
 }
 
 export interface ScoreSection {
@@ -41,7 +42,7 @@ function GameCard({ g }: { g: ScoreGame }) {
   const live = g.state === 'in';
   const post = g.state === 'post';
 
-  return (
+  const inner = (
     <div style={{
       background: '#121A30',
       borderRadius: 8,
@@ -49,6 +50,7 @@ function GameCard({ g }: { g: ScoreGame }) {
       padding: 14,
       position: 'relative',
       overflow: 'hidden',
+      transition: 'border-color 0.12s',
     }}>
       {live && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: '#FF5A4D' }} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -90,8 +92,25 @@ function GameCard({ g }: { g: ScoreGame }) {
       {g.broadcast && (
         <div style={{ marginTop: 8, fontSize: 9, color: '#8392B5' }}>{g.broadcast}</div>
       )}
+      {g.espnLink && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 9, color: '#8392B5', letterSpacing: '0.1em', fontWeight: 600 }}>
+          ESPN ↗
+        </div>
+      )}
     </div>
   );
+
+  if (g.espnLink) {
+    return (
+      <a href={g.espnLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block' }}
+        onMouseEnter={e => ((e.currentTarget.firstChild as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)')}
+        onMouseLeave={e => ((e.currentTarget.firstChild as HTMLElement).style.borderColor = live ? 'rgba(255,90,77,0.4)' : 'rgba(255,255,255,0.07)')}
+      >
+        {inner}
+      </a>
+    );
+  }
+  return inner;
 }
 
 export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClientProps) {

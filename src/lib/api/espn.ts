@@ -1,5 +1,22 @@
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
-const ESPN_NEWS_BASE = 'https://site.api.espn.com/apis/v1/sites/espn';
+
+// Leagues to pull from when no sport filter is applied
+const ALL_NEWS_LEAGUES = [
+  { sport: 'football',   league: 'nfl'   },
+  { sport: 'basketball', league: 'nba'   },
+  { sport: 'baseball',   league: 'mlb'   },
+  { sport: 'hockey',     league: 'nhl'   },
+  { sport: 'soccer',     league: 'usa.1' },
+  { sport: 'soccer',     league: 'esp.1' },
+  { sport: 'soccer',     league: 'eng.1' },
+  { sport: 'golf',       league: 'pga'   },
+];
+
+// Primary league per sport for filtered news
+const SPORT_PRIMARY_LEAGUE: Record<string, string> = {
+  football: 'nfl', basketball: 'nba', baseball: 'mlb',
+  hockey: 'nhl',   soccer: 'usa.1',   golf: 'pga',
+};
 
 async function espnFetch(url: string, revalidate = 300): Promise<unknown> {
   const res = await fetch(url, { next: { revalidate } });
@@ -71,14 +88,50 @@ export async function getScoreboard(sport: string, league: string, date?: string
   }
 }
 
-export async function getNews(sport?: string, limit = 20) {
+export async function getNews(sport?: string, limit = 20): Promise<unknown[]> {
   try {
-    const sportParam = sport ? `&sport=${sport}` : '';
-    const data = (await espnFetch(
-      `${ESPN_NEWS_BASE}/news?limit=${limit}${sportParam}`,
-      300
-    )) as { articles?: unknown[] };
-    return data.articles ?? [];
+    if (sport) {
+      const league = SPORT_PRIMARY_LEAGUE[sport];
+      if (!league) return [];
+      const data = (await espnFetch(
+        `${ESPN_BASE}/${sport}/${league}/news?limit=${limit}`,
+        300
+      )) as { articles?: unknown[] };
+      return data.articles ?? [];
+    }
+
+    // No filter: fetch from all leagues in parallel, merge sorted by date
+    const perLeague = Math.ceil(limit / ALL_NEWS_LEAGUES.length) + 2;
+    const results = await Promise.all(
+      ALL_NEWS_LEAGUES.map(async ({ sport: s, league: l }) => {
+        try {
+          const data = (await espnFetch(
+            `${ESPN_BASE}/${s}/${l}/news?limit=${perLeague}`,
+            300
+          )) as { articles?: unknown[] };
+          return (data.articles ?? []) as Array<{ published?: string; headline: string }>;
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    const seen = new Set<string>();
+    const merged: Array<{ published?: string }> = [];
+    for (const batch of results) {
+      for (const a of batch) {
+        if (!seen.has(a.headline)) {
+          seen.add(a.headline);
+          merged.push(a);
+        }
+      }
+    }
+    merged.sort((a, b) => {
+      const at = a.published ? new Date(a.published).getTime() : 0;
+      const bt = b.published ? new Date(b.published).getTime() : 0;
+      return bt - at;
+    });
+    return merged.slice(0, limit);
   } catch {
     return [];
   }

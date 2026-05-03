@@ -33,7 +33,7 @@ function parseGameDate(game: ESPNGame): string {
 
 function transformGame(
   game: ESPNGame & { leagueName: string; sport: string; leagueKey: string },
-  myTeamIds: Set<string>,
+  myTeamKeys: Set<string>,
 ): GameData | null {
   const comp = game.competitions?.[0];
   if (!comp) return null;
@@ -65,7 +65,7 @@ function transformGame(
       logo:    away.team.logos?.[0]?.href,
       color:   away.team.color ? `#${away.team.color}` : '#334155',
       score:   away.score,
-      mine:    myTeamIds.has(away.team.id),
+      mine:    myTeamKeys.has(`${away.team.id}:${game.leagueKey}`),
       winning: awayWinning,
       record:  away.records?.find(r => r.type === 'total')?.summary,
     },
@@ -75,7 +75,7 @@ function transformGame(
       logo:    home.team.logos?.[0]?.href,
       color:   home.team.color ? `#${home.team.color}` : '#334155',
       score:   home.score,
-      mine:    myTeamIds.has(home.team.id),
+      mine:    myTeamKeys.has(`${home.team.id}:${game.leagueKey}`),
       winning: homeWinning,
       record:  home.records?.find(r => r.type === 'total')?.summary,
     },
@@ -141,7 +141,8 @@ export default async function DashboardPage() {
     ]),
   ]);
 
-  const myTeamIds = new Set(myTeams.map(t => t.teamId));
+  // Key by "teamId:league" to prevent cross-sport teamId collisions (e.g. Seahawks & Giants both = id "26")
+  const myTeamKeys = new Set(myTeams.map(t => `${t.teamId}:${t.league}`));
 
   const todayGames: GameData[]     = [];
   const yesterdayGames: GameData[] = [];
@@ -151,11 +152,11 @@ export default async function DashboardPage() {
     const yesterdayRaw = (scoreResults[i * 2 + 1] as ESPNGame[]) ?? [];
 
     for (const g of todayRaw) {
-      const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamIds);
+      const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamKeys);
       if (gd && gd.date === todayStr) todayGames.push(gd);
     }
     for (const g of yesterdayRaw) {
-      const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamIds);
+      const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamKeys);
       if (gd && gd.date === yesterdayStr) yesterdayGames.push(gd);
     }
   });
