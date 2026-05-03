@@ -1,18 +1,17 @@
 import { createClient } from '@libsql/client';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_URL = `file:${path.join(process.cwd(), 'mysports.db')}`;
+const url = process.env.TURSO_DATABASE_URL ?? `file:${path.join(process.cwd(), 'mysports.db')}`;
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
-const client = createClient({ url: DB_URL });
+const client = createClient({ url, authToken });
 
 await client.execute(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     name TEXT,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
     created_at INTEGER DEFAULT (unixepoch())
   )
 `);

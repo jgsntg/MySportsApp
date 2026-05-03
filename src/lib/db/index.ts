@@ -1,16 +1,15 @@
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import * as schema from './schema';
-import path from 'path';
 
-const DB_URL = `file:${path.join(process.cwd(), 'mysports.db')}`;
+const url = process.env.TURSO_DATABASE_URL ?? `file:${process.cwd()}/mysports.db`;
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
-// Preserve connection across Next.js hot reloads in development
 const globalForDb = globalThis as unknown as {
   _libsql: ReturnType<typeof createClient> | undefined;
 };
 
-const client = globalForDb._libsql ?? createClient({ url: DB_URL });
+const client = globalForDb._libsql ?? createClient({ url, authToken });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForDb._libsql = client;

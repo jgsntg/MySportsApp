@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:push": "node scripts/init-db.mjs",
-    "db:generate": "drizzle-kit generate:sqlite",
+    "db:push": "node --env-file=.env.local scripts/init-db.mjs",
+    "db:generate": "drizzle-kit generate",
     "setup": "npm install && npm run db:push"
   },
   "dependencies": {

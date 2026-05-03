@@ -1,8 +1,9 @@
 export default {
   schema: './src/lib/db/schema.ts',
   out: './drizzle',
-  driver: 'libsql',
+  dialect: 'turso',
   dbCredentials: {
-    url: 'file:./mysports.db',
+    url: process.env.TURSO_DATABASE_URL ?? 'file:./mysports.db',
+    authToken: process.env.TURSO_AUTH_TOKEN,
   },
 };
