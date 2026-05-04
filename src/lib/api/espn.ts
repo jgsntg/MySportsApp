@@ -51,13 +51,18 @@ export async function getTeamRoster(sport: string, league: string, teamId: strin
     const data = (await espnFetch(
       `${ESPN_BASE}/${sport}/${league}/teams/${teamId}/roster`,
       3600
-    )) as { athletes?: Array<{ position: string; items: unknown[] }> };
-    if (data.athletes && Array.isArray(data.athletes)) {
-      return data.athletes.flatMap((group) =>
+    )) as { athletes?: unknown[] };
+    if (!data.athletes || !Array.isArray(data.athletes) || data.athletes.length === 0) return [];
+
+    // NFL/NBA/MLB/NHL return grouped format: { position: string, items: Athlete[] }
+    // Soccer (esp.1, eng.1, usa.1) returns a flat array of athlete objects
+    const first = data.athletes[0] as Record<string, unknown>;
+    if ('items' in first) {
+      return (data.athletes as Array<{ position: string; items: unknown[] }>).flatMap((group) =>
         (group.items ?? []).map((p) => ({ ...p as object, positionGroup: group.position }))
       );
     }
-    return [];
+    return data.athletes;
   } catch {
     return [];
   }
@@ -206,6 +211,70 @@ export async function getGameSummary(
     return { sport: 'standard', scoringPlays, recentPlays };
   } catch {
     return empty;
+  }
+}
+
+// ── Player stats & event log ──────────────────────────────────────────────────
+
+export interface StatCategory {
+  name: string;
+  displayName: string;
+  stats: Array<{ name: string; displayName: string; value: number; displayValue: string }>;
+}
+
+export async function getAthleteStats(sport: string, league: string, athleteId: string): Promise<StatCategory[]> {
+  try {
+    const data = await espnFetch(
+      `${ESPN_BASE}/${sport}/${league}/athletes/${athleteId}/statistics`,
+      3600
+    ) as { splits?: { categories?: StatCategory[] } };
+    return data.splits?.categories ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export interface EventLogGame {
+  id: string;
+  eventName: string;
+  date: string;
+  stats: Array<{ name: string; displayName: string; displayValue: string }>;
+}
+
+export async function getAthleteEventLog(sport: string, league: string, athleteId: string): Promise<EventLogGame[]> {
+  try {
+    const data = await espnFetch(
+      `${ESPN_BASE}/${sport}/${league}/athletes/${athleteId}/eventlog`,
+      1800
+    ) as {
+      events?: {
+        items?: Array<{
+          id: string;
+          event?: { name?: string; shortName?: string; date?: string };
+          statistics?: Array<{ stats?: Array<{ name: string; displayName: string; value: number; displayValue: string }> }>;
+        }>;
+      };
+    };
+    return (data.events?.items ?? []).slice(0, 5).map(item => ({
+      id: item.id,
+      eventName: item.event?.shortName ?? item.event?.name ?? 'Game',
+      date: item.event?.date ?? '',
+      stats: (item.statistics ?? []).flatMap(s => s.stats ?? []).slice(0, 8),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getPlayerNews(sport: string, league: string, athleteId: string, limit = 6): Promise<unknown[]> {
+  try {
+    const data = await espnFetch(
+      `${ESPN_BASE}/${sport}/${league}/news?athlete=${athleteId}&limit=${limit}`,
+      300
+    ) as { articles?: unknown[] };
+    return data.articles ?? [];
+  } catch {
+    return [];
   }
 }
 

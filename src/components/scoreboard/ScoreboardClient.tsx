@@ -230,22 +230,21 @@ export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClie
   };
   const onDragEnd = () => { setDragId(null); setOverId(null); };
 
-  const moveSection = (key: string, dir: -1 | 1) => {
-    setOrder(prev => {
-      const idx = prev.indexOf(key);
-      const next = idx + dir;
-      if (idx < 0 || next < 0 || next >= prev.length) return prev;
-      const arr = [...prev];
-      [arr[idx], arr[next]] = [arr[next], arr[idx]];
-      persist(arr, collapsed);
-      return arr;
-    });
-  };
-
   const sectionMap = Object.fromEntries(sections.map(s => [s.key, s]));
   const ordered = order.filter(k => sectionMap[k]).map(k => sectionMap[k]);
   const missing = sections.filter(s => !order.includes(s.key));
   const visible = [...ordered, ...missing];
+
+  const moveSection = (key: string, dir: -1 | 1) => {
+    const keys = visible.map(s => s.key);
+    const idx = keys.indexOf(key);
+    const next = idx + dir;
+    if (idx < 0 || next < 0 || next >= keys.length) return;
+    const arr = [...keys];
+    [arr[idx], arr[next]] = [arr[next], arr[idx]];
+    setOrder(arr);
+    persist(arr, collapsed);
+  };
 
   if (sections.length === 0) {
     return (

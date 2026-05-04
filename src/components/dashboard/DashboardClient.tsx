@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { timeAgo } from '@/lib/utils';
@@ -205,7 +206,7 @@ function LiveBanner({ games, T, A, onFocus }: {
 
 // ── SectionHead ───────────────────────────────────────────────────────────────
 
-function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDragEnd, dragging, onMoveUp, onMoveDown }: {
+function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDragEnd, dragging, onMoveUp, onMoveDown, collapsed, onToggleCollapse }: {
   title: string; count?: number | string; action?: string; actionHref?: string;
   T: Tokens; A: Accent;
   onDragStart: (e: React.DragEvent) => void;
@@ -213,6 +214,8 @@ function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDr
   dragging: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }) {
   const moveBtn = (label: string, onClick?: () => void) => (
     <button
@@ -264,6 +267,23 @@ function SectionHead({ title, count, action, actionHref, T, A, onDragStart, onDr
           {action}
         </span>
       ) : null}
+      {onToggleCollapse && (
+        <button
+          onClick={e => { e.stopPropagation(); onToggleCollapse(); }}
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            background: 'transparent', border: `1px solid ${T.border}`,
+            color: T.muted, padding: '3px 10px', borderRadius: 5,
+            fontSize: 10, fontWeight: 700, cursor: 'pointer',
+            letterSpacing: '0.1em', fontFamily: 'inherit', flexShrink: 0,
+            transition: 'color .12s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = T.ink)}
+          onMouseLeave={e => (e.currentTarget.style.color = T.muted)}
+        >
+          {collapsed ? '▶ EXPAND' : '▼ COLLAPSE'}
+        </button>
+      )}
     </div>
   );
 }
@@ -451,6 +471,66 @@ function SectionTeams({ myTeams, T, A, DEN }: {
   );
 }
 
+// ── PlayerStatLine ─────────────────────────────────────────────────────────────
+
+interface PlayerStatsData {
+  stats: Array<{ name: string; displayName: string; stats: Array<{ name: string; displayName: string; displayValue: string }> }>;
+  recentGames: Array<{ id: string; eventName: string; date: string; stats: Array<{ name: string; displayName: string; displayValue: string }> }>;
+}
+
+function PlayerStatLine({ sport, league, playerId, T, A }: {
+  sport: string; league: string; playerId: string; T: Tokens; A: Accent;
+}) {
+  const { data } = useQuery<PlayerStatsData | null>({
+    queryKey: ['playerStats', sport, league, playerId],
+    queryFn: async () => {
+      const res = await fetch(`/api/sports/playerstats?sport=${sport}&league=${league}&id=${playerId}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+
+  const seasonStats = data?.stats[0]?.stats?.slice(0, 3) ?? [];
+  const lastGame    = data?.recentGames?.[0];
+  const lastGameStat = lastGame?.stats?.slice(0, 2) ?? [];
+
+  if (!seasonStats.length && !lastGameStat.length) return null;
+
+  return (
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+      {seasonStats.length > 0 && (
+        <div>
+          <div style={{ fontSize: 8, color: T.muted, letterSpacing: '0.14em', fontWeight: 700, marginBottom: 4 }}>SEASON</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {seasonStats.map(s => (
+              <div key={s.name} style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: A.a, lineHeight: 1 }}>{s.displayValue}</div>
+                <div style={{ fontSize: 8, color: T.muted, letterSpacing: '0.1em', marginTop: 2 }}>{s.displayName.toUpperCase()}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {lastGame && lastGameStat.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ fontSize: 8, color: T.muted, letterSpacing: '0.14em', fontWeight: 700, marginBottom: 4 }}>
+            LAST · {lastGame.eventName}
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {lastGameStat.map(s => (
+              <div key={s.name} style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: A.b, lineHeight: 1 }}>{s.displayValue}</div>
+                <div style={{ fontSize: 8, color: T.muted, letterSpacing: '0.1em', marginTop: 2 }}>{s.displayName.toUpperCase()}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── SectionPlayers ────────────────────────────────────────────────────────────
 
 function SectionPlayers({ myPlayers, T, A, DEN }: {
@@ -470,33 +550,36 @@ function SectionPlayers({ myPlayers, T, A, DEN }: {
         <Link key={p.id} href={`/player/${p.sport}/${p.league}/${p.playerId}`} style={{ textDecoration: 'none' }}>
           <div style={{
             background: T.surface, borderRadius: 8, padding: DEN.padCard + 2,
-            border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 12,
+            border: `1px solid ${T.border}`,
             transition: 'border-color .15s',
           }}
             onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,209,102,0.3)')}
             onMouseLeave={e => (e.currentTarget.style.borderColor = T.border)}
           >
-            {p.playerPhoto ? (
-              <div style={{ width: 48, height: 48, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>
-                <Image src={p.playerPhoto} alt={p.playerName} width={48} height={48} style={{ objectFit: 'cover' }} unoptimized />
-              </div>
-            ) : (
-              <div style={{
-                width: 48, height: 48, background: T.surface2, borderRadius: 999,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: T.muted, fontSize: 20, fontWeight: 700, flexShrink: 0,
-              }}>
-                {p.playerName.charAt(0)}
-              </div>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {p.playerName}
-              </div>
-              <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>
-                {p.position ?? '–'} · {p.teamName ?? p.league.toUpperCase()}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {p.playerPhoto ? (
+                <div style={{ width: 48, height: 48, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>
+                  <Image src={p.playerPhoto} alt={p.playerName} width={48} height={48} style={{ objectFit: 'cover' }} unoptimized />
+                </div>
+              ) : (
+                <div style={{
+                  width: 48, height: 48, background: T.surface2, borderRadius: 999,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: T.muted, fontSize: 20, fontWeight: 700, flexShrink: 0,
+                }}>
+                  {p.playerName.charAt(0)}
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.playerName}
+                </div>
+                <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>
+                  {p.position ?? '–'} · {p.teamName ?? p.league.toUpperCase()}
+                </div>
               </div>
             </div>
+            <PlayerStatLine sport={p.sport} league={p.league} playerId={p.playerId} T={T} A={A} />
           </div>
         </Link>
       ))}
@@ -819,6 +902,7 @@ interface TweaksState {
   showTicker: boolean;
   showLiveBanner: boolean;
   visible: Record<string, boolean>;
+  collapsed: Record<string, boolean>;
 }
 
 function TweaksPanel({ tweaks, set, T, A, sections }: {
@@ -926,7 +1010,7 @@ export default function DashboardClient({
 }: DashboardClientProps) {
   const [tweaks, setTweaks] = useState<TweaksState>({
     theme: 'dark', density: 'cozy', accent: 'coral',
-    showTicker: true, showLiveBanner: true, visible: {},
+    showTicker: true, showLiveBanner: true, visible: {}, collapsed: {},
   });
   const set = (k: string, v: unknown) => setTweaks(t => ({ ...t, [k]: v }));
 
@@ -1032,7 +1116,7 @@ export default function DashboardClient({
   const SECTION_META: Record<string, { title: string; count?: number; action?: string; actionHref?: string }> = {
     games:     { title: "Today's games", count: totalGames,      action: 'SCOREBOARD →', actionHref: '/scoreboard' },
     teams:     { title: 'My teams',      count: myTeams.length,  action: 'MANAGE →' },
-    players:   { title: 'My players',    count: myPlayers.length },
+    players:   { title: 'My players',    count: myPlayers.length, action: 'VIEW ALL →', actionHref: '/players' },
     headlines: { title: 'Headlines',     count: (teamNews.length + generalHeadlines.length), action: 'ALL NEWS →', actionHref: '/headlines' },
   };
 
@@ -1060,7 +1144,7 @@ export default function DashboardClient({
         <div>
           <div style={{ fontSize: 11, color: T.muted, letterSpacing: '0.18em', fontWeight: 700 }}>{dateLabel}</div>
           <div style={{ fontSize: 26, fontWeight: 800, color: T.ink, marginTop: 4, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-            Hey, <span style={{ color: A.b }}>{userName}</span>.{' '}
+            Hey, <span style={{ color: A.b }}>{userName.split(' ')[0]}</span>.{' '}
             <span style={{ color: T.muted, fontWeight: 400 }}>{greetingMsg}</span>
           </div>
         </div>
@@ -1092,6 +1176,7 @@ export default function DashboardClient({
         {orderedVisible.map(id => {
           const meta = SECTION_META[id];
           if (!meta) return null;
+          const isCollapsed = !!tweaks.collapsed?.[id];
           return (
             <div
               key={id}
@@ -1116,8 +1201,10 @@ export default function DashboardClient({
                 dragging={dragId === id}
                 onMoveUp={orderedVisible.indexOf(id) > 0 ? () => moveSection(id, -1) : undefined}
                 onMoveDown={orderedVisible.indexOf(id) < orderedVisible.length - 1 ? () => moveSection(id, 1) : undefined}
+                collapsed={isCollapsed}
+                onToggleCollapse={() => set('collapsed', { ...tweaks.collapsed, [id]: !isCollapsed })}
               />
-              {renderSection(id)}
+              {!isCollapsed && renderSection(id)}
             </div>
           );
         })}
