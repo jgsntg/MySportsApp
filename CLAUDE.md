@@ -47,17 +47,27 @@ Pages under `(dashboard)` follow a consistent pattern: the page file is a **Serv
 
 ### ESPN API
 
-All ESPN data comes from `src/lib/api/espn.ts`, which wraps `https://site.api.espn.com/apis/site/v2/sports` (public, no API key). Next.js `fetch` with `next: { revalidate }` is used for ISR caching — scoreboard data revalidates every 60s, game summaries every 30s, news every 300s, rosters every 3600s.
+All ESPN data comes from `src/lib/api/espn.ts`. Two base URLs are used:
+- `https://site.api.espn.com/apis/site/v2/sports` — scoreboards, news, rosters, team/player profiles
+- `https://sports.core.api.espn.com/v2/sports` — player statistics and event logs (the site API endpoints for these return 404)
+
+Next.js `fetch` with `next: { revalidate }` is used for ISR caching — scoreboard data revalidates every 60s, game summaries every 30s, news every 300s, rosters every 3600s, player stats 1800s.
 
 The canonical sport/league matrix is `ALL_LEAGUES` (exported from `espn.ts`) and `SPORT_CONFIGS` (in `src/types/index.ts`). Whenever you add a new sport or league, update both. ESPN uses `sport`/`league` path params (`football/nfl`, `soccer/usa.1`, etc.) — the `key` field is the short UI identifier (`nfl`, `mls`).
+
+Player stats (`getAthleteStats`) and event logs (`getAthleteEventLog`) use the core API. The event log returns `$ref` pointers, so the function fetches the last 5 played games in parallel and resolves both the event detail and per-game statistics refs. Stats are filtered to per-game averages (`avg*` prefix, excluding `avg48*`).
 
 The fantasy feed (`src/app/api/fantasy/feed/route.ts`) combines ESPN RSS + the news API, scoring articles for fantasy relevance via keyword matching. No external RSS parsing library — it uses a small custom regex parser.
 
 ### Database
 
-Drizzle ORM on top of `@libsql/client`. Three tables: `users`, `favorite_teams`, `favorite_players` (defined in `src/lib/db/schema.ts`). Schema is maintained via `scripts/init-db.mjs` (raw SQL `CREATE TABLE IF NOT EXISTS`) rather than Drizzle migrations — run `npm run db:push` to apply. `drizzle-kit generate` is wired up but migrations aren't applied automatically.
+Drizzle ORM on top of `@libsql/client`. Four tables: `users`, `favorite_teams`, `favorite_players`, `user_preferences` (defined in `src/lib/db/schema.ts`). Schema is maintained via `scripts/init-db.mjs` (raw SQL `CREATE TABLE IF NOT EXISTS`) rather than Drizzle migrations — run `npm run db:push` to apply. `drizzle-kit generate` is wired up but migrations aren't applied automatically.
+
+**Note:** `npm run db:push` requires Node 16+ (`--env-file` flag and `??=` syntax in `@libsql/client`). On Node 14 you can apply the SQL directly: `sqlite3 mysports.db < scripts/init-db.mjs` or use `sqlite3 mysports.db "CREATE TABLE IF NOT EXISTS ..."`.
 
 The DB client in `src/lib/db/index.ts` uses a global singleton to avoid multiple connections in dev (Next.js hot reload).
+
+Helper functions for preferences are in `src/lib/db/preferences.ts` — `getPreferences(userId)` and `savePreferences(userId, update)`.
 
 ### Auth
 
@@ -67,7 +77,13 @@ NextAuth with two providers: credentials (email + bcrypt) and Google OAuth. Both
 
 TanStack Query (`src/hooks/useFavorites.ts`) manages favorites on the client — cache keys are `['favorites', 'teams']` and `['favorites', 'players']`. Mutations invalidate the relevant query on success.
 
-`DashboardClient` has its own localStorage persistence for layout order (`ms_v3_layout_v1`) and display tweaks — theme, density, accent, section visibility (`ms_v3_tweaks_v1`). All theme/density/accent values are inline style objects derived from the `THEMES`, `ACCENTS`, and `DENSITY` token maps at the top of that file.
+**User preferences** (dashboard layout order, tweaks, scoreboard order/collapsed state) are persisted to the `user_preferences` DB table via `PUT /api/preferences`. Server components (`dashboard/page.tsx`, `scoreboard/page.tsx`) load these at request time and pass them as `savedPrefs` props to the client components — so the correct theme/order is rendered on the first paint with no flash. localStorage is kept as a write-through cache and fallback.
+
+`DashboardClient` uses CSS custom properties (`--ms-bg`, `--ms-surface`, `--ms-a`, `--ms-gap`, etc.) for the entire theme/accent/density system. The root `<div>` gets a single `style` object with all 14 vars via `buildCSSVars()`. Sub-components read `var(--ms-*)` directly — no T/A/DEN prop drilling. `FocusMode` and `TweaksPanel` are dynamically imported (`next/dynamic`, `ssr: false`) so they don't bloat the initial bundle.
+
+### Loading Skeletons
+
+`loading.tsx` files exist for `/dashboard`, `/players`, and `/teams`. These are shown instantly by Next.js while the server component fetches data.
 
 ### Dynamic Routes
 
