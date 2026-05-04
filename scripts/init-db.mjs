@@ -49,5 +49,14 @@ await client.execute(`
   )
 `);
 
+await client.execute(`
+  CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id TEXT PRIMARY KEY,
+    prefs TEXT NOT NULL DEFAULT '{}',
+    updated_at INTEGER DEFAULT (unixepoch()),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )
+`);
+
 console.log('✓ Database tables initialized');
 process.exit(0);

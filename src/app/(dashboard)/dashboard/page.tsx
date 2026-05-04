@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { favoriteTeams, favoritePlayers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getScoreboard, getNews, getTeamNews } from '@/lib/api/espn';
+import { getPreferences } from '@/lib/db/preferences';
 import type { Metadata } from 'next';
 import type { ESPNGame, ESPNNewsArticle, FavoriteTeam } from '@/types';
 import DashboardClient, { type GameData } from '@/components/dashboard/DashboardClient';
@@ -134,9 +135,10 @@ export default async function DashboardPage() {
   const todayStr     = formatDate(now);
   const yesterdayStr = formatDate(yesterday);
 
-  const [myTeams, myPlayers] = await Promise.all([
+  const [myTeams, myPlayers, savedPrefs] = await Promise.all([
     db.select().from(favoriteTeams).where(eq(favoriteTeams.userId, userId)),
     db.select().from(favoritePlayers).where(eq(favoritePlayers.userId, userId)),
+    getPreferences(userId),
   ]);
 
   // Fetch today + yesterday scoreboards for all leagues, plus general headlines, plus team news
@@ -194,6 +196,7 @@ export default async function DashboardPage() {
       myPlayers={myPlayers}
       generalHeadlines={generalHeadlines as ESPNNewsArticle[]}
       teamNews={teamNews}
+      savedPrefs={savedPrefs}
     />
   );
 }

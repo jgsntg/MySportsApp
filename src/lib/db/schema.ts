@@ -1,5 +1,11 @@
 import { sqliteTable, text, integer, unique } from 'drizzle-orm/sqlite-core';
 
+export const userPreferences = sqliteTable('user_preferences', {
+  userId:    text('user_id').primaryKey(),
+  prefs:     text('prefs').notNull().default('{}'),
+  updatedAt: integer('updated_at').default(0),
+});
+
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull().unique(),

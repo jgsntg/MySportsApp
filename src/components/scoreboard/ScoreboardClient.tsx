@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import type { UserPrefs } from '@/lib/db/preferences';
 
 const MONO = 'var(--font-mono), ui-monospace, monospace';
 const STORAGE_KEY = 'ms_scoreboard_v1';
@@ -52,6 +53,7 @@ export interface ScoreSection {
 interface ScoreboardClientProps {
   sections: ScoreSection[];
   dateLabel: string;
+  savedPrefs?: UserPrefs;
 }
 
 function GameCard({ g }: { g: ScoreGame }) {
@@ -176,28 +178,45 @@ function GolfCard({ t }: { t: GolfTournament }) {
   ) : inner;
 }
 
-export default function ScoreboardClient({ sections, dateLabel }: ScoreboardClientProps) {
-  const defaultOrder    = sections.map(s => s.key);
-  const [order, setOrder]           = useState<string[]>(defaultOrder);
-  const [collapsed, setCollapsed]   = useState<Record<string, boolean>>({});
+export default function ScoreboardClient({ sections, dateLabel, savedPrefs }: ScoreboardClientProps) {
+  const defaultOrder = sections.map(s => s.key);
+  const serverOrder     = savedPrefs?.scoreboardOrder;
+  const serverCollapsed = savedPrefs?.scoreboardCollapsed;
+
+  const [order, setOrder]           = useState<string[]>(serverOrder ?? defaultOrder);
+  const [collapsed, setCollapsed]   = useState<Record<string, boolean>>(serverCollapsed ?? {});
   const [dragId, setDragId]         = useState<string | null>(null);
   const [overId, setOverId]         = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState(false);
+  const initialized = useRef(false);
 
-  // Persist order + collapsed state
+  // On mount: sync localStorage cache with server; fall back to localStorage if no server prefs
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as { order?: string[]; collapsed?: Record<string, boolean> };
-        if (parsed.order) setOrder(parsed.order);
-        if (parsed.collapsed) setCollapsed(parsed.collapsed);
-      }
-    } catch {}
+    if (serverOrder) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ order: serverOrder, collapsed: serverCollapsed ?? {} })); } catch {}
+    } else {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved) as { order?: string[]; collapsed?: Record<string, boolean> };
+          if (parsed.order)     setOrder(parsed.order);
+          if (parsed.collapsed) setCollapsed(parsed.collapsed);
+        }
+      } catch {}
+    }
+    initialized.current = true;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const persist = (nextOrder: string[], nextCollapsed: Record<string, boolean>) => {
+    // Always write to localStorage as cache
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ order: nextOrder, collapsed: nextCollapsed })); } catch {}
+    // Write to server
+    fetch('/api/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scoreboardOrder: nextOrder, scoreboardCollapsed: nextCollapsed }),
+    }).catch(() => {});
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 1500);
   };

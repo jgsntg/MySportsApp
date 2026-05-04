@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { favoriteTeams } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getScoreboard } from '@/lib/api/espn';
+import { getPreferences } from '@/lib/db/preferences';
 import type { Metadata } from 'next';
 import type { ESPNGame } from '@/types';
 import ScoreboardClient, { type ScoreSection, type ScoreGame, type GolfTournament } from '@/components/scoreboard/ScoreboardClient';
@@ -118,8 +119,9 @@ export default async function ScoreboardPage() {
 
   const todayStr = formatDate(new Date());
 
-  const [myTeams, ...scoreResults] = await Promise.all([
+  const [myTeams, savedPrefs, ...scoreResults] = await Promise.all([
     db.select().from(favoriteTeams).where(eq(favoriteTeams.userId, userId)),
+    getPreferences(userId),
     ...LEAGUES.map(l => getScoreboard(l.sport, l.league, todayStr)),
   ]);
 
@@ -157,7 +159,7 @@ export default async function ScoreboardPage() {
 
   return (
     <div style={{ background: '#0B1020', color: '#F0F4FF', minHeight: '100vh', fontFamily: '"Inter", system-ui, sans-serif', padding: '24px 0 48px' }}>
-      <ScoreboardClient sections={sections} dateLabel={dateLabel} />
+      <ScoreboardClient sections={sections} dateLabel={dateLabel} savedPrefs={savedPrefs} />
     </div>
   );
 }
