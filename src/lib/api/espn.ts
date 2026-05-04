@@ -216,6 +216,15 @@ export async function getGameSummary(
 
 // ── Player stats & event log ──────────────────────────────────────────────────
 
+const ESPN_CORE_BASE = 'https://sports.core.api.espn.com/v2/sports';
+
+async function coreApiFetch(url: string): Promise<unknown> {
+  const safeUrl = url.replace(/^http:\/\//, 'https://');
+  const res = await fetch(safeUrl, { next: { revalidate: 1800 } });
+  if (!res.ok) throw new Error(`ESPN core API ${res.status}: ${safeUrl}`);
+  return res.json();
+}
+
 export interface StatCategory {
   name: string;
   displayName: string;
@@ -224,11 +233,15 @@ export interface StatCategory {
 
 export async function getAthleteStats(sport: string, league: string, athleteId: string): Promise<StatCategory[]> {
   try {
-    const data = await espnFetch(
-      `${ESPN_BASE}/${sport}/${league}/athletes/${athleteId}/statistics`,
-      3600
+    const data = await coreApiFetch(
+      `${ESPN_CORE_BASE}/${sport}/leagues/${league}/athletes/${athleteId}/statistics/0?lang=en&region=us`
     ) as { splits?: { categories?: StatCategory[] } };
-    return data.splits?.categories ?? [];
+    const categories = data.splits?.categories ?? [];
+    // Filter each category to only per-game averages (prefix "avg" but not "avg48")
+    return categories.map(cat => ({
+      ...cat,
+      stats: cat.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48')),
+    })).filter(cat => cat.stats.length > 0);
   } catch {
     return [];
   }
@@ -243,24 +256,40 @@ export interface EventLogGame {
 
 export async function getAthleteEventLog(sport: string, league: string, athleteId: string): Promise<EventLogGame[]> {
   try {
-    const data = await espnFetch(
-      `${ESPN_BASE}/${sport}/${league}/athletes/${athleteId}/eventlog`,
-      1800
+    const data = await coreApiFetch(
+      `${ESPN_CORE_BASE}/${sport}/leagues/${league}/athletes/${athleteId}/eventlog?lang=en&region=us&limit=100`
     ) as {
       events?: {
         items?: Array<{
-          id: string;
-          event?: { name?: string; shortName?: string; date?: string };
-          statistics?: Array<{ stats?: Array<{ name: string; displayName: string; value: number; displayValue: string }> }>;
+          event?: { $ref?: string };
+          statistics?: { $ref?: string };
+          played?: boolean;
         }>;
       };
     };
-    return (data.events?.items ?? []).slice(0, 5).map(item => ({
-      id: item.id,
-      eventName: item.event?.shortName ?? item.event?.name ?? 'Game',
-      date: item.event?.date ?? '',
-      stats: (item.statistics ?? []).flatMap(s => s.stats ?? []).slice(0, 8),
-    }));
+    const allItems = (data.events?.items ?? []).filter(item => item.played !== false);
+    const recentItems = allItems.slice(-5);
+    if (!recentItems.length) return [];
+
+    const results = await Promise.all(
+      recentItems.map(async item => {
+        const [eventData, statsData] = await Promise.all([
+          item.event?.$ref ? coreApiFetch(item.event.$ref) : Promise.resolve(null),
+          item.statistics?.$ref ? coreApiFetch(item.statistics.$ref) : Promise.resolve(null),
+        ]) as [
+          { id?: string; shortName?: string; name?: string; date?: string } | null,
+          { splits?: { categories?: StatCategory[] } } | null,
+        ];
+
+        const id = eventData?.id ?? String(Math.random());
+        const eventName = eventData?.shortName ?? eventData?.name ?? 'Game';
+        const date = eventData?.date ?? '';
+        const cats = statsData?.splits?.categories ?? [];
+        const stats = cats.flatMap(c => c.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48'))).slice(0, 8);
+        return { id, eventName, date, stats };
+      })
+    );
+    return results.reverse();
   } catch {
     return [];
   }
