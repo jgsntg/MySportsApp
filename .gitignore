@@ -30,5 +30,5 @@ next-env.d.ts
 
 drizzle/
 
-# Claude Code internal
-.claude/
+# Claude Code — keep local settings local, share commands and project config
+.claude/settings.local.json
