@@ -322,24 +322,42 @@ export async function getAthleteEventLog(sport: string, league: string, athleteI
         const eventName = eventData?.shortName ?? eventData?.name ?? 'Game';
         const cats = statsData?.splits?.categories ?? [];
 
-        const statOrder = EVENT_LOG_STAT_ORDER[sport];
         let stats: EventLogGame['stats'];
-        if (statOrder) {
-          const statsMap = new Map<string, EventLogGame['stats'][number]>();
-          for (const cat of cats) {
-            for (const s of cat.stats) {
-              if (statOrder.includes(s.name)) statsMap.set(s.name, s);
-            }
-          }
-          stats = statOrder.flatMap(name => {
-            const s = statsMap.get(name);
-            return s ? [s] : [];
+        if (sport === 'baseball') {
+          // Build a flat stat map so we can compute composites
+          const allStats = new Map<string, { name: string; displayName: string; value: number; displayValue: string }>();
+          for (const cat of cats) for (const s of cat.stats) allStats.set(s.name, s);
+
+          // ESPN stores HR separately from hits; add them together for the standard H box-score stat
+          const hitsVal = (allStats.get('hits')?.value ?? 0) + (allStats.get('homeRuns')?.value ?? 0);
+          const hEntry = { name: 'hits', displayName: 'H', displayValue: String(hitsVal) };
+
+          // First 4 shown in the compact row: AVG · H · HR · RBI
+          const order = ['avg', 'hits', 'homeRuns', 'RBIs', 'atBats', 'runs', 'strikeouts', 'OPS'];
+          stats = order.flatMap(name => {
+            if (name === 'hits') return [hEntry];
+            const s = allStats.get(name);
+            return s ? [{ name: s.name, displayName: s.displayName, displayValue: s.displayValue }] : [];
           });
         } else {
-          // Basketball: avg-prefixed names (avgPoints, avgRebounds, etc.)
-          stats = cats
-            .flatMap(c => c.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48')))
-            .slice(0, 8);
+          const statOrder = EVENT_LOG_STAT_ORDER[sport];
+          if (statOrder) {
+            const statsMap = new Map<string, EventLogGame['stats'][number]>();
+            for (const cat of cats) {
+              for (const s of cat.stats) {
+                if (statOrder.includes(s.name)) statsMap.set(s.name, s);
+              }
+            }
+            stats = statOrder.flatMap(name => {
+              const s = statsMap.get(name);
+              return s ? [s] : [];
+            });
+          } else {
+            // Basketball: avg-prefixed names (avgPoints, avgRebounds, etc.)
+            stats = cats
+              .flatMap(c => c.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48')))
+              .slice(0, 8);
+          }
         }
 
         return { id, eventName, date, stats };

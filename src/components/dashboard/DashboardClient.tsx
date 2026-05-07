@@ -842,7 +842,7 @@ export default function DashboardClient({
   const totalGames = todayGames.length + yesterdayGames.length + tomorrowGames.length;
 
   const SECTION_META = useMemo<Record<string, { title: string; count: number; action?: string; actionHref?: string }>>(() => ({
-    games:     { title: "Today's games", count: totalGames,      action: 'SCOREBOARD →', actionHref: '/scoreboard' },
+    games:     { title: 'Key games',      count: totalGames,      action: 'SCOREBOARD →', actionHref: '/scoreboard' },
     teams:     { title: 'My teams',      count: myTeams.length,  action: 'MANAGE →' },
     players:   { title: 'My players',    count: myPlayers.length, action: 'VIEW ALL →', actionHref: '/players' },
     headlines: { title: 'Headlines',     count: teamNews.length + generalHeadlines.length, action: 'ALL NEWS →', actionHref: '/headlines' },
