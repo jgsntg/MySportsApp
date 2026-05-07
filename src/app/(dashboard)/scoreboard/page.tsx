@@ -22,8 +22,15 @@ const LEAGUES = [
   { key: 'pga',    sport: 'golf',       league: 'pga',   name: 'PGA Tour', color: '#00573F' },
 ];
 
+const ET_TZ = 'America/New_York';
+
 function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10).replace(/-/g, '');
+  return d.toLocaleDateString('en-CA', { timeZone: ET_TZ }).replace(/-/g, '');
+}
+
+function makeDateLabel(d: Date): string {
+  return d.toLocaleDateString('en-US', { timeZone: ET_TZ, weekday: 'long', month: 'long', day: 'numeric' })
+    .toUpperCase().replace(',', ' ·');
 }
 
 interface ESPNGolfCompetitor {
@@ -113,53 +120,65 @@ function transformGame(game: ESPNGame, myTeamKeys: Set<string>, sport: string, l
   };
 }
 
-export default async function ScoreboardPage() {
-  const session = await getServerSession(authOptions);
-  const userId  = session!.user.id;
-
-  const todayStr = formatDate(new Date());
-
-  const [myTeams, savedPrefs, ...scoreResults] = await Promise.all([
-    db.select().from(favoriteTeams).where(eq(favoriteTeams.userId, userId)),
-    getPreferences(userId),
-    ...LEAGUES.map(l => getScoreboard(l.sport, l.league, todayStr)),
-  ]);
-
-  // Composite key prevents cross-sport teamId collisions (e.g. Seahawks & Giants both = id "26")
-  const myTeamKeys = new Set(myTeams.map(t => `${t.teamId}:${t.league}`));
-
-  const sections: ScoreSection[] = (LEAGUES.map((l, i) => {
-    // Golf tournaments have a different data shape — handle separately
+function buildSections(rawResults: unknown[], myTeamKeys: Set<string>): ScoreSection[] {
+  return (LEAGUES.map((l, i) => {
     if (l.sport === 'golf') {
-      const golfTournament = buildGolfTournament(scoreResults[i] as ESPNGolfEvent[]);
+      const golfTournament = buildGolfTournament(rawResults[i] as ESPNGolfEvent[]);
       if (!golfTournament) return null;
       return { key: l.key, name: l.name, color: l.color, games: [], golfTournament };
     }
-
-    const rawGames = (scoreResults[i] as ESPNGame[]) ?? [];
+    const rawGames = (rawResults[i] as ESPNGame[]) ?? [];
     const games = rawGames
       .map(g => transformGame(g, myTeamKeys, l.sport, l.league))
       .filter((g): g is ScoreGame => g !== null);
-
-    // Favorites first, then live, then scheduled, then final
     games.sort((a, b) => {
       const aScore = (a.away.mine || a.home.mine ? 2 : 0) + (a.state === 'in' ? 1 : 0);
       const bScore = (b.away.mine || b.home.mine ? 2 : 0) + (b.state === 'in' ? 1 : 0);
       return bScore - aScore;
     });
-
     return { key: l.key, name: l.name, color: l.color, games };
   }) as Array<ScoreSection | null>).filter((s): s is ScoreSection => s !== null && (s.games.length > 0 || !!s.golfTournament));
+}
 
-  const now = new Date();
-  const dateLabel = now
-    .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-    .toUpperCase()
-    .replace(',', ' ·');
+export default async function ScoreboardPage() {
+  const session = await getServerSession(authOptions);
+  const userId  = session!.user.id;
+
+  const now       = new Date();
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+  const tomorrow  = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  const todayStr     = formatDate(now);
+  const yesterdayStr = formatDate(yesterday);
+  const tomorrowStr  = formatDate(tomorrow);
+
+  const [myTeams, savedPrefs, ...scoreResults] = await Promise.all([
+    db.select().from(favoriteTeams).where(eq(favoriteTeams.userId, userId)),
+    getPreferences(userId),
+    ...LEAGUES.flatMap(l => [
+      getScoreboard(l.sport, l.league, todayStr),
+      getScoreboard(l.sport, l.league, yesterdayStr),
+      getScoreboard(l.sport, l.league, tomorrowStr),
+    ]),
+  ]);
+
+  const myTeamKeys = new Set(myTeams.map(t => `${t.teamId}:${t.league}`));
+  const n = LEAGUES.length;
+
+  const todaySections     = buildSections(scoreResults.filter((_, i) => i % 3 === 0).slice(0, n), myTeamKeys);
+  const yesterdaySections = buildSections(scoreResults.filter((_, i) => i % 3 === 1).slice(0, n), myTeamKeys);
+  const tomorrowSections  = buildSections(scoreResults.filter((_, i) => i % 3 === 2).slice(0, n), myTeamKeys);
 
   return (
     <div style={{ background: '#0B1020', color: '#F0F4FF', minHeight: '100vh', fontFamily: '"Inter", system-ui, sans-serif', padding: '24px 0 48px' }}>
-      <ScoreboardClient sections={sections} dateLabel={dateLabel} savedPrefs={savedPrefs} />
+      <ScoreboardClient
+        todaySections={todaySections}
+        yesterdaySections={yesterdaySections}
+        tomorrowSections={tomorrowSections}
+        todayDateLabel={makeDateLabel(now)}
+        yesterdayDateLabel={makeDateLabel(yesterday)}
+        tomorrowDateLabel={makeDateLabel(tomorrow)}
+        savedPrefs={savedPrefs}
+      />
     </div>
   );
 }

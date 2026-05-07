@@ -233,8 +233,14 @@ const SOCCER_SEASON_STATS: Record<string, Set<string>> = {
   defensive: new Set(['effectiveTackles', 'interceptions', 'effectiveClearance']),
 };
 
-// Order matters: first 4 show in the per-game row in PlayersClient
-const SOCCER_GAME_STAT_ORDER = ['totalGoals', 'assists', 'shotsOnTarget', 'minutes', 'yellowCards', 'redCards', 'shots', 'passPct'];
+// Per-game event-log stat names ordered by display priority (first 4 shown in compact row).
+// Basketball uses avg-prefixed names and falls through to the default filter.
+const EVENT_LOG_STAT_ORDER: Partial<Record<string, string[]>> = {
+  baseball: ['avg', 'hits', 'atBats', 'homeRuns', 'RBIs', 'runs', 'strikeouts', 'OPS'],
+  football: ['passingYards', 'rushingYards', 'receivingYards', 'touchdowns', 'completions', 'attempts', 'interceptions', 'sacks'],
+  hockey:   ['goals', 'assists', 'points', 'plusMinus', 'shots', 'hits', 'blockedShots', 'penaltyMinutes'],
+  soccer:   ['totalGoals', 'assists', 'shotsOnTarget', 'minutes', 'yellowCards', 'redCards', 'shots', 'passPct'],
+};
 
 export interface StatCategory {
   name: string;
@@ -316,19 +322,21 @@ export async function getAthleteEventLog(sport: string, league: string, athleteI
         const eventName = eventData?.shortName ?? eventData?.name ?? 'Game';
         const cats = statsData?.splits?.categories ?? [];
 
+        const statOrder = EVENT_LOG_STAT_ORDER[sport];
         let stats: EventLogGame['stats'];
-        if (sport === 'soccer') {
+        if (statOrder) {
           const statsMap = new Map<string, EventLogGame['stats'][number]>();
           for (const cat of cats) {
             for (const s of cat.stats) {
-              if (SOCCER_GAME_STAT_ORDER.includes(s.name)) statsMap.set(s.name, s);
+              if (statOrder.includes(s.name)) statsMap.set(s.name, s);
             }
           }
-          stats = SOCCER_GAME_STAT_ORDER.flatMap(name => {
+          stats = statOrder.flatMap(name => {
             const s = statsMap.get(name);
             return s ? [s] : [];
           });
         } else {
+          // Basketball: avg-prefixed names (avgPoints, avgRebounds, etc.)
           stats = cats
             .flatMap(c => c.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48')))
             .slice(0, 8);

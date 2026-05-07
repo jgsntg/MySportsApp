@@ -50,9 +50,15 @@ export interface ScoreSection {
   golfTournament?: GolfTournament;
 }
 
+type ScoreTab = 'yesterday' | 'today' | 'tomorrow';
+
 interface ScoreboardClientProps {
-  sections: ScoreSection[];
-  dateLabel: string;
+  todaySections: ScoreSection[];
+  yesterdaySections: ScoreSection[];
+  tomorrowSections: ScoreSection[];
+  todayDateLabel: string;
+  yesterdayDateLabel: string;
+  tomorrowDateLabel: string;
   savedPrefs?: UserPrefs;
 }
 
@@ -178,8 +184,18 @@ function GolfCard({ t }: { t: GolfTournament }) {
   ) : inner;
 }
 
-export default function ScoreboardClient({ sections, dateLabel, savedPrefs }: ScoreboardClientProps) {
-  const defaultOrder = sections.map(s => s.key);
+export default function ScoreboardClient({
+  todaySections, yesterdaySections, tomorrowSections,
+  todayDateLabel, yesterdayDateLabel, tomorrowDateLabel,
+  savedPrefs,
+}: ScoreboardClientProps) {
+  const defaultTab: ScoreTab = todaySections.length ? 'today' : tomorrowSections.length ? 'tomorrow' : 'yesterday';
+  const [tab, setTab] = useState<ScoreTab>(defaultTab);
+
+  const sections = tab === 'today' ? todaySections : tab === 'yesterday' ? yesterdaySections : tomorrowSections;
+  const dateLabel = tab === 'today' ? todayDateLabel : tab === 'yesterday' ? yesterdayDateLabel : tomorrowDateLabel;
+
+  const defaultOrder = todaySections.map(s => s.key);
   const serverOrder     = savedPrefs?.scoreboardOrder;
   const serverCollapsed = savedPrefs?.scoreboardCollapsed;
 
@@ -265,26 +281,40 @@ export default function ScoreboardClient({ sections, dateLabel, savedPrefs }: Sc
     persist(arr, collapsed);
   };
 
-  if (sections.length === 0) {
-    return (
-      <div style={{ padding: 60, textAlign: 'center', color: '#8392B5', border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: '#F0F4FF', marginBottom: 6 }}>No games today.</div>
-        <div style={{ fontSize: 13 }}>Check back later or visit yesterday&apos;s games on the dashboard.</div>
-      </div>
-    );
-  }
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    padding: '5px 16px', borderRadius: 6, fontSize: 10, fontWeight: 800,
+    letterSpacing: '0.12em', cursor: 'pointer', border: 'none', fontFamily: 'inherit',
+    background: active ? '#FF5A4D' : 'transparent',
+    color: active ? '#000' : '#8392B5',
+    transition: 'all .12s',
+  });
+
+  const emptyMsg = tab === 'today' ? 'No games scheduled today.'
+    : tab === 'yesterday' ? 'No games played yesterday.'
+    : 'No games scheduled for tomorrow.';
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: '#F0F4FF' }}>Scoreboard</h1>
-        <span style={{ fontSize: 11, color: '#8392B5', letterSpacing: '0.16em', fontWeight: 700 }}>{dateLabel}</span>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button style={tabStyle(tab === 'yesterday')} onClick={() => setTab('yesterday')}>YESTERDAY</button>
+          <button style={tabStyle(tab === 'today')}     onClick={() => setTab('today')}>TODAY</button>
+          <button style={tabStyle(tab === 'tomorrow')}  onClick={() => setTab('tomorrow')}>TOMORROW</button>
+        </div>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 10, color: '#8392B5', letterSpacing: '0.12em' }}>
           DRAG OR USE ↑↓ TO REORDER
         </span>
       </div>
+      <div style={{ fontSize: 11, color: '#8392B5', letterSpacing: '0.16em', fontWeight: 700, marginBottom: 28 }}>{dateLabel}</div>
+
+      {sections.length === 0 && (
+        <div style={{ padding: 60, textAlign: 'center', color: '#8392B5', border: '1px dashed rgba(255,255,255,0.07)', borderRadius: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#F0F4FF', marginBottom: 6 }}>{emptyMsg}</div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
         {visible.map((section, visIdx) => {
