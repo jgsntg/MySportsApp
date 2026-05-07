@@ -225,6 +225,17 @@ async function coreApiFetch(url: string): Promise<unknown> {
   return res.json();
 }
 
+// Soccer uses raw totals, not avg-prefixed names like other sports.
+// These sets define which stats to surface per context.
+const SOCCER_SEASON_STATS: Record<string, Set<string>> = {
+  offensive: new Set(['totalGoals', 'assists', 'shots', 'shotsOnTarget', 'attemptsInBox', 'shotAssists']),
+  general:   new Set(['appearances', 'starts', 'minutes', 'yellowCards', 'redCards', 'passPct']),
+  defensive: new Set(['effectiveTackles', 'interceptions', 'effectiveClearance']),
+};
+
+// Order matters: first 4 show in the per-game row in PlayersClient
+const SOCCER_GAME_STAT_ORDER = ['totalGoals', 'assists', 'shotsOnTarget', 'minutes', 'yellowCards', 'redCards', 'shots', 'passPct'];
+
 export interface StatCategory {
   name: string;
   displayName: string;
@@ -237,7 +248,13 @@ export async function getAthleteStats(sport: string, league: string, athleteId: 
       `${ESPN_CORE_BASE}/${sport}/leagues/${league}/athletes/${athleteId}/statistics/0?lang=en&region=us`
     ) as { splits?: { categories?: StatCategory[] } };
     const categories = data.splits?.categories ?? [];
-    // Filter each category to only per-game averages (prefix "avg" but not "avg48")
+    if (sport === 'soccer') {
+      return categories.map(cat => ({
+        ...cat,
+        stats: cat.stats.filter(s => SOCCER_SEASON_STATS[cat.name.toLowerCase()]?.has(s.name)),
+      })).filter(cat => cat.stats.length > 0);
+    }
+    // Other sports: filter to per-game averages (prefix "avg" but not "avg48")
     return categories.map(cat => ({
       ...cat,
       stats: cat.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48')),
@@ -267,12 +284,22 @@ export async function getAthleteEventLog(sport: string, league: string, athleteI
         }>;
       };
     };
-    const allItems = (data.events?.items ?? []).filter(item => item.played !== false);
-    const recentItems = allItems.slice(-5);
-    if (!recentItems.length) return [];
 
+    const allItems = data.events?.items ?? [];
+    const playedItems = allItems.filter(item => item.played !== false);
+    // Also probe the item immediately after the last played one — it may be today's in-progress game
+    const lastPlayedGlobalIdx = playedItems.length > 0
+      ? allItems.lastIndexOf(playedItems[playedItems.length - 1])
+      : -1;
+    const maybeToday = lastPlayedGlobalIdx >= 0 && lastPlayedGlobalIdx + 1 < allItems.length
+      ? [allItems[lastPlayedGlobalIdx + 1]]
+      : [];
+    const candidates = [...playedItems.slice(-5), ...maybeToday];
+    if (!candidates.length) return [];
+
+    const now = new Date();
     const results = await Promise.all(
-      recentItems.map(async item => {
+      candidates.map(async item => {
         const [eventData, statsData] = await Promise.all([
           item.event?.$ref ? coreApiFetch(item.event.$ref) : Promise.resolve(null),
           item.statistics?.$ref ? coreApiFetch(item.statistics.$ref) : Promise.resolve(null),
@@ -281,15 +308,40 @@ export async function getAthleteEventLog(sport: string, league: string, athleteI
           { splits?: { categories?: StatCategory[] } } | null,
         ];
 
+        const date = eventData?.date ?? '';
+        // Drop games that haven't started yet
+        if (date && new Date(date) > now) return null;
+
         const id = eventData?.id ?? String(Math.random());
         const eventName = eventData?.shortName ?? eventData?.name ?? 'Game';
-        const date = eventData?.date ?? '';
         const cats = statsData?.splits?.categories ?? [];
-        const stats = cats.flatMap(c => c.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48'))).slice(0, 8);
+
+        let stats: EventLogGame['stats'];
+        if (sport === 'soccer') {
+          const statsMap = new Map<string, EventLogGame['stats'][number]>();
+          for (const cat of cats) {
+            for (const s of cat.stats) {
+              if (SOCCER_GAME_STAT_ORDER.includes(s.name)) statsMap.set(s.name, s);
+            }
+          }
+          stats = SOCCER_GAME_STAT_ORDER.flatMap(name => {
+            const s = statsMap.get(name);
+            return s ? [s] : [];
+          });
+        } else {
+          stats = cats
+            .flatMap(c => c.stats.filter(s => s.name.startsWith('avg') && !s.name.startsWith('avg48')))
+            .slice(0, 8);
+        }
+
         return { id, eventName, date, stats };
       })
     );
-    return results.reverse();
+
+    return results
+      .filter((r): r is EventLogGame => r !== null)
+      .slice(-5)
+      .reverse();
   } catch {
     return [];
   }
