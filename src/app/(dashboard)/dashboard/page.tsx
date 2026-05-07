@@ -22,8 +22,10 @@ const LEAGUES = [
   { sport: 'golf',       league: 'pga',   name: 'PGA Tour' },
 ];
 
+const ET_TZ = 'America/New_York';
+
 function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10).replace(/-/g, '');
+  return d.toLocaleDateString('en-CA', { timeZone: ET_TZ }).replace(/-/g, '');
 }
 
 function espnGameUrl(sport: string, league: string, gameId: string): string {
@@ -35,8 +37,9 @@ function espnGameUrl(sport: string, league: string, gameId: string): string {
 
 function parseGameDate(game: ESPNGame): string {
   const comp = game.competitions?.[0];
-  // ESPN returns ISO dates like "2026-05-03T..." — strip time and dashes to match formatDate() output
-  return comp?.date ? comp.date.slice(0, 10).replace(/-/g, '') : '';
+  if (!comp?.date) return '';
+  // ESPN dates are UTC — convert to Eastern time before extracting the date
+  return new Date(comp.date).toLocaleDateString('en-CA', { timeZone: ET_TZ }).replace(/-/g, '');
 }
 
 function transformGame(
@@ -130,10 +133,11 @@ export default async function DashboardPage() {
   const userId  = session!.user.id;
 
   const now       = new Date();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+  const tomorrow  = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
   const todayStr     = formatDate(now);
   const yesterdayStr = formatDate(yesterday);
+  const tomorrowStr  = formatDate(tomorrow);
 
   const [myTeams, myPlayers, savedPrefs] = await Promise.all([
     db.select().from(favoriteTeams).where(eq(favoriteTeams.userId, userId)),
@@ -141,13 +145,14 @@ export default async function DashboardPage() {
     getPreferences(userId),
   ]);
 
-  // Fetch today + yesterday scoreboards for all leagues, plus general headlines, plus team news
+  // Fetch today + yesterday + tomorrow scoreboards for all leagues, plus headlines and team news
   const [generalHeadlines, teamNews, ...scoreResults] = await Promise.all([
     getNews(undefined, 8),
     fetchTeamNews(myTeams),
     ...LEAGUES.flatMap(l => [
       getScoreboard(l.sport, l.league, todayStr),
       getScoreboard(l.sport, l.league, yesterdayStr),
+      getScoreboard(l.sport, l.league, tomorrowStr),
     ]),
   ]);
 
@@ -156,10 +161,12 @@ export default async function DashboardPage() {
 
   const todayGames: GameData[]     = [];
   const yesterdayGames: GameData[] = [];
+  const tomorrowGames: GameData[]  = [];
 
   LEAGUES.forEach((l, i) => {
-    const todayRaw     = (scoreResults[i * 2]     as ESPNGame[]) ?? [];
-    const yesterdayRaw = (scoreResults[i * 2 + 1] as ESPNGame[]) ?? [];
+    const todayRaw     = (scoreResults[i * 3]     as ESPNGame[]) ?? [];
+    const yesterdayRaw = (scoreResults[i * 3 + 1] as ESPNGame[]) ?? [];
+    const tomorrowRaw  = (scoreResults[i * 3 + 2] as ESPNGame[]) ?? [];
 
     for (const g of todayRaw) {
       const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamKeys);
@@ -169,17 +176,22 @@ export default async function DashboardPage() {
       const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamKeys);
       if (gd && gd.date === yesterdayStr) yesterdayGames.push(gd);
     }
+    for (const g of tomorrowRaw) {
+      const gd = transformGame({ ...g, leagueName: l.name, sport: l.sport, leagueKey: l.league }, myTeamKeys);
+      if (gd && gd.date === tomorrowStr) tomorrowGames.push(gd);
+    }
   });
 
   const sortedToday     = sortByFavorites(todayGames);
   const sortedYesterday = sortByFavorites(yesterdayGames);
+  const sortedTomorrow  = sortByFavorites(tomorrowGames);
 
   const liveMyTeamCount = sortedToday.filter(
     g => g.state === 'in' && (g.away.mine || g.home.mine)
   ).length;
 
   const dateLabel = now
-    .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+    .toLocaleDateString('en-US', { timeZone: ET_TZ, weekday: 'long', month: 'long', day: 'numeric' })
     .toUpperCase()
     .replace(',', ' ·');
 
@@ -192,6 +204,7 @@ export default async function DashboardPage() {
       liveMyTeamCount={liveMyTeamCount}
       todayGames={sortedToday}
       yesterdayGames={sortedYesterday}
+      tomorrowGames={sortedTomorrow}
       myTeams={myTeams}
       myPlayers={myPlayers}
       generalHeadlines={generalHeadlines as ESPNNewsArticle[]}

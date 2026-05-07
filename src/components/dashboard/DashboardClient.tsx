@@ -44,6 +44,7 @@ interface DashboardClientProps {
   liveMyTeamCount: number;
   todayGames: GameData[];
   yesterdayGames: GameData[];
+  tomorrowGames: GameData[];
   myTeams: FavoriteTeam[];
   myPlayers: FavoritePlayer[];
   generalHeadlines: ESPNNewsArticle[];
@@ -391,12 +392,15 @@ const GameCard = memo(function GameCard({ g, onFocus }: {
 
 // ── SectionGames ──────────────────────────────────────────────────────────────
 
-const SectionGames = memo(function SectionGames({ todayGames, yesterdayGames, onFocus }: {
-  todayGames: GameData[]; yesterdayGames: GameData[];
+type GameTab = 'yesterday' | 'today' | 'tomorrow';
+
+const SectionGames = memo(function SectionGames({ todayGames, yesterdayGames, tomorrowGames, onFocus }: {
+  todayGames: GameData[]; yesterdayGames: GameData[]; tomorrowGames: GameData[];
   onFocus: (g: GameData) => void;
 }) {
-  const [tab, setTab] = useState<'today' | 'yesterday'>(todayGames.length ? 'today' : 'yesterday');
-  const games = tab === 'today' ? todayGames : yesterdayGames;
+  const defaultTab: GameTab = todayGames.length ? 'today' : tomorrowGames.length ? 'tomorrow' : 'yesterday';
+  const [tab, setTab] = useState<GameTab>(defaultTab);
+  const games = tab === 'today' ? todayGames : tab === 'yesterday' ? yesterdayGames : tomorrowGames;
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '5px 14px', borderRadius: 6, fontSize: 10, fontWeight: 800,
@@ -406,15 +410,18 @@ const SectionGames = memo(function SectionGames({ todayGames, yesterdayGames, on
     transition: 'all .12s',
   });
 
+  const emptyMsg = tab === 'today' ? 'scheduled today' : tab === 'yesterday' ? 'played yesterday' : 'scheduled tomorrow';
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
-        <button style={tabStyle(tab === 'today')}     onClick={() => setTab('today')}>TODAY</button>
         <button style={tabStyle(tab === 'yesterday')} onClick={() => setTab('yesterday')}>YESTERDAY</button>
+        <button style={tabStyle(tab === 'today')}     onClick={() => setTab('today')}>TODAY</button>
+        <button style={tabStyle(tab === 'tomorrow')}  onClick={() => setTab('tomorrow')}>TOMORROW</button>
       </div>
       {!games.length ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--ms-muted)', border: '1px dashed var(--ms-border)', borderRadius: 8 }}>
-          No games {tab === 'today' ? 'scheduled today' : 'played yesterday'}.
+          No games {emptyMsg}.
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--ms-gap)' }}>
@@ -688,7 +695,7 @@ const SectionHeadlines = memo(function SectionHeadlines({ teamNews, generalHeadl
 
 export default function DashboardClient({
   userName, dateLabel, liveMyTeamCount,
-  todayGames, yesterdayGames,
+  todayGames, yesterdayGames, tomorrowGames,
   myTeams, myPlayers,
   generalHeadlines, teamNews,
   savedPrefs,
@@ -832,7 +839,7 @@ export default function DashboardClient({
   const isVisible      = (id: string) => tweaks.visible[id] !== false;
   const orderedVisible = order.filter(isVisible);
 
-  const totalGames = todayGames.length + yesterdayGames.length;
+  const totalGames = todayGames.length + yesterdayGames.length + tomorrowGames.length;
 
   const SECTION_META = useMemo<Record<string, { title: string; count: number; action?: string; actionHref?: string }>>(() => ({
     games:     { title: "Today's games", count: totalGames,      action: 'SCOREBOARD →', actionHref: '/scoreboard' },
@@ -848,7 +855,7 @@ export default function DashboardClient({
 
   const renderSection = (id: string) => {
     switch (id) {
-      case 'games':     return <SectionGames     todayGames={todayGames} yesterdayGames={yesterdayGames} onFocus={openFocus} />;
+      case 'games':     return <SectionGames     todayGames={todayGames} yesterdayGames={yesterdayGames} tomorrowGames={tomorrowGames} onFocus={openFocus} />;
       case 'teams':     return <SectionTeams     myTeams={myTeams} />;
       case 'players':   return <SectionPlayers   myPlayers={myPlayers} />;
       case 'headlines': return <SectionHeadlines teamNews={teamNews} generalHeadlines={generalHeadlines} />;
