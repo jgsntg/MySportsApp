@@ -43,11 +43,25 @@ await client.execute(`
     player_photo TEXT,
     team_name TEXT,
     position TEXT,
+    sort_order INTEGER DEFAULT 0,
+    display_in_command_center INTEGER DEFAULT 1,
     created_at INTEGER DEFAULT (unixepoch()),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, player_id, sport)
   )
 `);
+
+try {
+  await client.execute('ALTER TABLE favorite_players ADD COLUMN sort_order INTEGER DEFAULT 0');
+} catch (err) {
+  if (!String(err).includes('duplicate column name')) throw err;
+}
+
+try {
+  await client.execute('ALTER TABLE favorite_players ADD COLUMN display_in_command_center INTEGER DEFAULT 1');
+} catch (err) {
+  if (!String(err).includes('duplicate column name')) throw err;
+}
 
 await client.execute(`
   CREATE TABLE IF NOT EXISTS user_preferences (

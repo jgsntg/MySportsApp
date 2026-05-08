@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
+import { ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 import { timeAgo } from '@/lib/utils';
 import type { FavoriteTeam, FavoritePlayer, ESPNNewsArticle } from '@/types';
 import type { TweaksState } from '@/components/dashboard/TweaksPanel';
@@ -555,7 +556,14 @@ const PlayerStatLine = memo(function PlayerStatLine({ sport, league, playerId }:
 
 // ── SectionPlayers ────────────────────────────────────────────────────────────
 
-const SectionPlayers = memo(function SectionPlayers({ myPlayers }: { myPlayers: FavoritePlayer[] }) {
+const SectionPlayers = memo(function SectionPlayers({ myPlayers, onMovePlayer, onToggleCommandCenter }: {
+  myPlayers: FavoritePlayer[];
+  onMovePlayer: (id: string, direction: -1 | 1) => void;
+  onToggleCommandCenter: (id: string, enabled: boolean) => void;
+}) {
+  const visiblePlayers = myPlayers.filter(p => p.displayInCommandCenter !== 0);
+  const hiddenPlayers = myPlayers.filter(p => p.displayInCommandCenter === 0);
+
   if (!myPlayers.length) {
     return (
       <div style={{ padding: '32px', textAlign: 'center', color: 'var(--ms-muted)', border: '1px dashed var(--ms-border)', borderRadius: 8 }}>
@@ -565,45 +573,110 @@ const SectionPlayers = memo(function SectionPlayers({ myPlayers }: { myPlayers: 
     );
   }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--ms-gap)' }}>
-      {myPlayers.map(p => (
-        <Link key={p.id} href={`/player/${p.sport}/${p.league}/${p.playerId}`} style={{ textDecoration: 'none' }}>
-          <div style={{
-            background: 'var(--ms-surface)', borderRadius: 8, padding: 'calc(var(--ms-pad) + 2px)',
-            border: '1px solid var(--ms-border)',
-            transition: 'border-color .15s',
-          }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,209,102,0.3)')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--ms-border)')}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {p.playerPhoto ? (
-                <div style={{ width: 48, height: 48, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>
-                  <Image src={p.playerPhoto} alt={p.playerName} width={48} height={48} style={{ objectFit: 'cover' }} unoptimized />
-                </div>
-              ) : (
-                <div style={{
-                  width: 48, height: 48, background: 'var(--ms-surface2)', borderRadius: 999,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--ms-muted)', fontSize: 20, fontWeight: 700, flexShrink: 0,
-                }}>
-                  {p.playerName.charAt(0)}
-                </div>
-              )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ms-ink)', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {p.playerName}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--ms-muted)', marginTop: 3 }}>
-                  {p.position ?? '–'} · {p.teamName ?? p.league.toUpperCase()}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ms-gap)' }}>
+      {visiblePlayers.length ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 'var(--ms-gap)' }}>
+          {visiblePlayers.map((p, index) => (
+            <div key={p.id} style={{
+              background: 'var(--ms-surface)', borderRadius: 8, padding: 'calc(var(--ms-pad) + 2px)',
+              border: '1px solid var(--ms-border)',
+              transition: 'border-color .15s',
+            }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,209,102,0.3)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--ms-border)')}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <Link href={`/player/${p.sport}/${p.league}/${p.playerId}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                  {p.playerPhoto ? (
+                    <div style={{ width: 48, height: 48, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>
+                      <Image src={p.playerPhoto} alt={p.playerName} width={48} height={48} style={{ objectFit: 'cover' }} unoptimized />
+                    </div>
+                  ) : (
+                    <div style={{
+                      width: 48, height: 48, background: 'var(--ms-surface2)', borderRadius: 999,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--ms-muted)', fontSize: 20, fontWeight: 700, flexShrink: 0,
+                    }}>
+                      {p.playerName.charAt(0)}
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ms-ink)', lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.playerName}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--ms-muted)', marginTop: 3 }}>
+                      {p.position ?? '–'} · {p.teamName ?? p.league.toUpperCase()}
+                    </div>
+                  </div>
+                </Link>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <PlayerIconButton title="Move up" disabled={index === 0} onClick={() => onMovePlayer(p.id, -1)}>
+                    <ChevronUp size={13} />
+                  </PlayerIconButton>
+                  <PlayerIconButton title="Move down" disabled={index === visiblePlayers.length - 1} onClick={() => onMovePlayer(p.id, 1)}>
+                    <ChevronDown size={13} />
+                  </PlayerIconButton>
+                  <PlayerIconButton title="Hide from Command Center" active onClick={() => onToggleCommandCenter(p.id, false)}>
+                    <Eye size={13} />
+                  </PlayerIconButton>
                 </div>
               </div>
+              <PlayerStatLine sport={p.sport} league={p.league} playerId={p.playerId} />
             </div>
-            <PlayerStatLine sport={p.sport} league={p.league} playerId={p.playerId} />
-          </div>
-        </Link>
-      ))}
+          ))}
+        </div>
+      ) : (
+        <div style={{ padding: '22px', textAlign: 'center', color: 'var(--ms-muted)', border: '1px dashed var(--ms-border)', borderRadius: 8, fontSize: 12 }}>
+          No players are currently displayed in Command Center.
+        </div>
+      )}
+
+      {hiddenPlayers.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingTop: 4 }}>
+          {hiddenPlayers.map(p => (
+            <button
+              key={p.id}
+              onClick={() => onToggleCommandCenter(p.id, true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'var(--ms-surface2)', border: '1px solid var(--ms-border)',
+                color: 'var(--ms-muted)', borderRadius: 6, padding: '6px 9px',
+                fontSize: 10, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+              }}
+            >
+              <EyeOff size={12} />
+              {p.playerName}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
+  );
+});
+
+const PlayerIconButton = memo(function PlayerIconButton({ title, disabled = false, active = false, onClick, children }: {
+  title: string;
+  disabled?: boolean;
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width: 24, height: 24, borderRadius: 5, padding: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--ms-surface2)', border: '1px solid var(--ms-border)',
+        color: disabled ? 'rgba(131,146,181,0.28)' : active ? 'var(--ms-b)' : 'var(--ms-muted)',
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      {children}
+    </button>
   );
 });
 
@@ -712,6 +785,7 @@ export default function DashboardClient({
   const set = useCallback((k: string, v: unknown) => setTweaks(t => ({ ...t, [k]: v })), []);
 
   const [order, setOrder]               = useState<string[]>(serverOrder ?? DEFAULT_ORDER);
+  const [dashboardPlayers, setDashboardPlayers] = useState<FavoritePlayer[]>(myPlayers);
   const [savedSnapshot, setSavedSnapshot] = useState<string[] | null>(serverOrder ?? null);
   const initialized = React.useRef(false);
   const tweaksSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -836,17 +910,53 @@ export default function DashboardClient({
     });
   }, []);
 
+  const persistPlayerOrder = useCallback((next: FavoritePlayer[]) => {
+    fetch('/api/favorites/players', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds: next.map(p => p.id) }),
+    }).catch(() => {});
+  }, []);
+
+  const movePlayer = useCallback((id: string, direction: -1 | 1) => {
+    setDashboardPlayers(prev => {
+      const visibleIds = prev.filter(p => p.displayInCommandCenter !== 0).map(p => p.id);
+      const visibleIndex = visibleIds.indexOf(id);
+      const targetId = visibleIds[visibleIndex + direction];
+      if (!targetId) return prev;
+      const from = prev.findIndex(p => p.id === id);
+      const to = prev.findIndex(p => p.id === targetId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      [next[from], next[to]] = [next[to], next[from]];
+      persistPlayerOrder(next);
+      return next;
+    });
+  }, [persistPlayerOrder]);
+
+  const togglePlayerCommandCenter = useCallback((id: string, enabled: boolean) => {
+    setDashboardPlayers(prev =>
+      prev.map(p => p.id === id ? { ...p, displayInCommandCenter: enabled ? 1 : 0 } : p)
+    );
+    fetch(`/api/favorites/players/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayInCommandCenter: enabled }),
+    }).catch(() => {});
+  }, []);
+
   const isVisible      = (id: string) => tweaks.visible[id] !== false;
   const orderedVisible = order.filter(isVisible);
 
   const totalGames = todayGames.length + yesterdayGames.length + tomorrowGames.length;
+  const commandCenterPlayerCount = dashboardPlayers.filter(p => p.displayInCommandCenter !== 0).length;
 
   const SECTION_META = useMemo<Record<string, { title: string; count: number; action?: string; actionHref?: string }>>(() => ({
     games:     { title: 'Key games',      count: totalGames,      action: 'SCOREBOARD →', actionHref: '/scoreboard' },
     teams:     { title: 'My teams',      count: myTeams.length,  action: 'MANAGE →' },
-    players:   { title: 'My players',    count: myPlayers.length, action: 'VIEW ALL →', actionHref: '/players' },
+    players:   { title: 'My players',    count: commandCenterPlayerCount, action: 'VIEW ALL →', actionHref: '/players' },
     headlines: { title: 'Headlines',     count: teamNews.length + generalHeadlines.length, action: 'ALL NEWS →', actionHref: '/headlines' },
-  }), [totalGames, myTeams.length, myPlayers.length, teamNews.length, generalHeadlines.length]);
+  }), [totalGames, myTeams.length, commandCenterPlayerCount, teamNews.length, generalHeadlines.length]);
 
   const sectionList = useMemo(
     () => DEFAULT_ORDER.map(id => ({ id, title: SECTION_META[id as keyof typeof SECTION_META]?.title ?? id })),
@@ -857,7 +967,7 @@ export default function DashboardClient({
     switch (id) {
       case 'games':     return <SectionGames     todayGames={todayGames} yesterdayGames={yesterdayGames} tomorrowGames={tomorrowGames} onFocus={openFocus} />;
       case 'teams':     return <SectionTeams     myTeams={myTeams} />;
-      case 'players':   return <SectionPlayers   myPlayers={myPlayers} />;
+      case 'players':   return <SectionPlayers   myPlayers={dashboardPlayers} onMovePlayer={movePlayer} onToggleCommandCenter={togglePlayerCommandCenter} />;
       case 'headlines': return <SectionHeadlines teamNews={teamNews} generalHeadlines={generalHeadlines} />;
       default:          return null;
     }

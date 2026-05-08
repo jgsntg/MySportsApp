@@ -44,6 +44,8 @@ export const favoritePlayers = sqliteTable(
     playerPhoto: text('player_photo'),
     teamName: text('team_name'),
     position: text('position'),
+    sortOrder: integer('sort_order').default(0),
+    displayInCommandCenter: integer('display_in_command_center').default(1),
     createdAt: integer('created_at').default(0),
   },
   (table) => ({

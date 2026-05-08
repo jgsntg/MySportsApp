@@ -2,7 +2,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { favoriteTeams, favoritePlayers } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { getSessionUserId } from '@/lib/db/session-user';
+import { asc, eq } from 'drizzle-orm';
 import { getScoreboard, getNews, getTeamNews } from '@/lib/api/espn';
 import { getPreferences } from '@/lib/db/preferences';
 import type { Metadata } from 'next';
@@ -130,7 +131,8 @@ async function fetchTeamNews(teams: FavoriteTeam[]): Promise<ESPNNewsArticle[]> 
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  const userId  = session!.user.id;
+  const userId  = await getSessionUserId(session!);
+  if (!userId) throw new Error('Missing session user');
 
   const now       = new Date();
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
@@ -141,7 +143,7 @@ export default async function DashboardPage() {
 
   const [myTeams, myPlayers, savedPrefs] = await Promise.all([
     db.select().from(favoriteTeams).where(eq(favoriteTeams.userId, userId)),
-    db.select().from(favoritePlayers).where(eq(favoritePlayers.userId, userId)),
+    db.select().from(favoritePlayers).where(eq(favoritePlayers.userId, userId)).orderBy(asc(favoritePlayers.sortOrder), asc(favoritePlayers.createdAt)),
     getPreferences(userId),
   ]);
 

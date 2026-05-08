@@ -195,6 +195,8 @@ export interface FavoritePlayer {
   playerPhoto: string | null;
   teamName: string | null;
   position: string | null;
+  sortOrder: number | null;
+  displayInCommandCenter: number | null;
   createdAt: number | null;
 }
 

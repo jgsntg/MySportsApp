@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { timeAgo } from '@/lib/utils';
 import type { FavoritePlayer, ESPNNewsArticle } from '@/types';
@@ -174,13 +175,50 @@ function PlayerPanel({ player }: { player: FavoritePlayer }) {
 }
 
 export default function PlayersClient({ players }: { players: FavoritePlayer[] }) {
+  const [orderedPlayers, setOrderedPlayers] = useState<FavoritePlayer[]>(players);
   const [selectedId, setSelectedId] = useState<string | null>(
     players.length > 0 ? players[0].id : null
   );
 
-  const selected = players.find(p => p.id === selectedId) ?? null;
+  const selected = orderedPlayers.find(p => p.id === selectedId) ?? null;
 
-  if (!players.length) {
+  const visibleCount = useMemo(
+    () => orderedPlayers.filter(p => p.displayInCommandCenter !== 0).length,
+    [orderedPlayers]
+  );
+
+  const persistOrder = useCallback((next: FavoritePlayer[]) => {
+    fetch('/api/favorites/players', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds: next.map(p => p.id) }),
+    }).catch(() => {});
+  }, []);
+
+  const movePlayer = useCallback((id: string, direction: -1 | 1) => {
+    setOrderedPlayers(prev => {
+      const index = prev.findIndex(p => p.id === id);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      persistOrder(next);
+      return next;
+    });
+  }, [persistOrder]);
+
+  const toggleCommandCenter = useCallback((id: string, enabled: boolean) => {
+    setOrderedPlayers(prev =>
+      prev.map(p => p.id === id ? { ...p, displayInCommandCenter: enabled ? 1 : 0 } : p)
+    );
+    fetch(`/api/favorites/players/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayInCommandCenter: enabled }),
+    }).catch(() => {});
+  }, []);
+
+  if (!orderedPlayers.length) {
     return (
       <div style={{ background: T.bg, color: T.ink, minHeight: '100vh', fontFamily: '"Inter", system-ui, sans-serif', padding: '24px 0 48px' }}>
         <h1 style={{ margin: '0 0 32px', fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: T.ink }}>
@@ -209,58 +247,86 @@ export default function PlayersClient({ players }: { players: FavoritePlayer[] }
       <h1 style={{ margin: '0 0 24px', fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: T.ink }}>
         My Players
       </h1>
+      <div style={{ fontSize: 12, color: T.muted, margin: '-14px 0 20px' }}>
+        {visibleCount} of {orderedPlayers.length} displayed in Command Center
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24, alignItems: 'start' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
 
         {/* Player list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'sticky', top: 84 }}>
-          {players.map(p => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, position: 'sticky', top: 84, flex: '0 1 280px', minWidth: 260, maxWidth: 420 }}>
+          {orderedPlayers.map((p, index) => {
             const active = p.id === selectedId;
+            const displayed = p.displayInCommandCenter !== 0;
             return (
-              <button
+              <div
                 key={p.id}
-                onClick={() => setSelectedId(p.id)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                  display: 'flex', alignItems: 'stretch', gap: 8, padding: 8,
                   borderRadius: 8, border: `1px solid ${active ? A.a : T.border}`,
                   background: active ? `rgba(255,90,77,0.08)` : T.surface,
-                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
                   transition: 'all .12s',
+                  opacity: displayed ? 1 : 0.58,
                 }}
                 onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)'; }}
                 onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.borderColor = T.border; }}
               >
-                {p.playerPhoto ? (
-                  <div style={{ width: 36, height: 36, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>
-                    <Image src={p.playerPhoto} alt={p.playerName} width={36} height={36} style={{ objectFit: 'cover' }} unoptimized />
+                <button
+                  onClick={() => setSelectedId(p.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0,
+                    background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+                    fontFamily: 'inherit', textAlign: 'left',
+                  }}
+                >
+                  {p.playerPhoto ? (
+                    <div style={{ width: 36, height: 36, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>
+                      <Image src={p.playerPhoto} alt={p.playerName} width={36} height={36} style={{ objectFit: 'cover' }} unoptimized />
+                    </div>
+                  ) : (
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 999, background: T.surface2, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 14, fontWeight: 700, color: active ? A.a : T.muted,
+                    }}>
+                      {p.playerName.charAt(0)}
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? T.ink : T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.playerName}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>
+                      {p.position ?? '–'} · {p.league.toUpperCase()}
+                    </div>
                   </div>
-                ) : (
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 999, background: T.surface2, flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 14, fontWeight: 700, color: active ? A.a : T.muted,
-                  }}>
-                    {p.playerName.charAt(0)}
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? T.ink : T.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.playerName}
-                  </div>
-                  <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>
-                    {p.position ?? '–'} · {p.league.toUpperCase()}
-                  </div>
+                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  <button title="Move up" aria-label={`Move ${p.playerName} up`} disabled={index === 0} onClick={() => movePlayer(p.id, -1)} style={iconButtonStyle(index !== 0)}>
+                    <ChevronUp size={14} />
+                  </button>
+                  <button title="Move down" aria-label={`Move ${p.playerName} down`} disabled={index === orderedPlayers.length - 1} onClick={() => movePlayer(p.id, 1)} style={iconButtonStyle(index !== orderedPlayers.length - 1)}>
+                    <ChevronDown size={14} />
+                  </button>
+                  <button
+                    title={displayed ? 'Hide from Command Center' : 'Display in Command Center'}
+                    aria-label={`${displayed ? 'Hide' : 'Display'} ${p.playerName} in Command Center`}
+                    onClick={() => toggleCommandCenter(p.id, !displayed)}
+                    style={iconButtonStyle(true, displayed ? A.b : T.muted)}
+                  >
+                    {displayed ? <Eye size={14} /> : <EyeOff size={14} />}
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
 
         {/* Detail panel */}
         {selected && (
-          <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, padding: 24 }}>
+          <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, padding: 24, flex: '1 1 420px', minWidth: 0 }}>
             {/* Player header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}`, flexWrap: 'wrap' }}>
               {selected.playerPhoto ? (
                 <div style={{ width: 64, height: 64, borderRadius: 999, overflow: 'hidden', flexShrink: 0 }}>
                   <Image src={selected.playerPhoto} alt={selected.playerName} width={64} height={64} style={{ objectFit: 'cover' }} unoptimized />
@@ -295,6 +361,21 @@ export default function PlayersClient({ players }: { players: FavoritePlayer[] }
               >
                 PROFILE ↗
               </Link>
+              <button
+                onClick={() => toggleCommandCenter(selected.id, selected.displayInCommandCenter === 0)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: selected.displayInCommandCenter !== 0 ? 'rgba(255,209,102,0.12)' : T.surface2,
+                  border: `1px solid ${selected.displayInCommandCenter !== 0 ? 'rgba(255,209,102,0.28)' : T.border}`,
+                  color: selected.displayInCommandCenter !== 0 ? A.b : T.muted,
+                  padding: '7px 12px', borderRadius: 8,
+                  fontSize: 10, fontWeight: 800, letterSpacing: '0.1em',
+                  cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                }}
+              >
+                {selected.displayInCommandCenter !== 0 ? <Eye size={13} /> : <EyeOff size={13} />}
+                COMMAND CENTER
+              </button>
             </div>
 
             <PlayerPanel player={selected} />
@@ -303,4 +384,14 @@ export default function PlayersClient({ players }: { players: FavoritePlayer[] }
       </div>
     </div>
   );
+}
+
+function iconButtonStyle(enabled: boolean, color = T.muted): React.CSSProperties {
+  return {
+    width: 26, height: 26, borderRadius: 6, padding: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: T.surface2, border: `1px solid ${T.border}`,
+    color: enabled ? color : 'rgba(131,146,181,0.28)',
+    cursor: enabled ? 'pointer' : 'default',
+  };
 }

@@ -324,12 +324,11 @@ export async function getAthleteEventLog(sport: string, league: string, athleteI
 
         let stats: EventLogGame['stats'];
         if (sport === 'baseball') {
-          // Build a flat stat map so we can compute composites
+          const batting = cats.find(cat => cat.name === 'batting');
           const allStats = new Map<string, { name: string; displayName: string; value: number; displayValue: string }>();
-          for (const cat of cats) for (const s of cat.stats) allStats.set(s.name, s);
+          for (const s of batting?.stats ?? []) allStats.set(s.name, s);
 
-          // ESPN stores HR separately from hits; add them together for the standard H box-score stat
-          const hitsVal = (allStats.get('hits')?.value ?? 0) + (allStats.get('homeRuns')?.value ?? 0);
+          const hitsVal = allStats.get('hits')?.value ?? 0;
           const hEntry = { name: 'hits', displayName: 'H', displayValue: String(hitsVal) };
 
           // First 4 shown in the compact row: AVG · H · HR · RBI

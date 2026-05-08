@@ -233,6 +233,8 @@ Unique constraint: `(user_id, team_id, sport)`.
 | player_photo | TEXT | ESPN CDN URL |
 | team_name | TEXT | |
 | position | TEXT | e.g. `QB` |
+| sort_order | INTEGER | User-managed player ranking |
+| display_in_command_center | INTEGER | 1 = show on dashboard, 0 = hidden |
 | created_at | INTEGER | |
 
 Unique constraint: `(user_id, player_id, sport)`.
