@@ -32,3 +32,7 @@ drizzle/
 
 # Claude Code — keep local settings local, share commands and project config
 .claude/settings.local.json
+
+# AI handoff kit — scratch notes are local; handoff history is committed
+.ai/scratch/
+!.ai/scratch/.gitkeep
