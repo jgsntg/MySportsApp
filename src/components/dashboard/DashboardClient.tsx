@@ -425,7 +425,7 @@ const SectionGames = memo(function SectionGames({ todayGames, yesterdayGames, to
           No games {emptyMsg}.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--ms-gap)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(160px, 28vw, 280px), 1fr))', gap: 'var(--ms-gap)' }}>
           {games.slice(0, 9).map(g => (
             <GameCard key={g.id} g={g} onFocus={onFocus} />
           ))}
@@ -449,7 +449,7 @@ const SectionTeams = memo(function SectionTeams({ myTeams }: { myTeams: Favorite
     );
   }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--ms-gap)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(160px, 28vw, 280px), 1fr))', gap: 'var(--ms-gap)' }}>
       {myTeams.map(t => {
         const color = t.teamColor ? `#${t.teamColor}` : '#1A2440';
         return (
@@ -731,7 +731,7 @@ const SectionHeadlines = memo(function SectionHeadlines({ teamNews, generalHeadl
           <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.2em', color: 'var(--ms-b)', marginBottom: 10 }}>
             MY TEAMS
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--ms-gap)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(200px, 30vw, 320px), 1fr))', gap: 'var(--ms-gap)' }}>
             {teamNews.slice(0, 3).map((h, i) => (
               <ArticleCard key={i} h={h} />
             ))}
@@ -750,10 +750,8 @@ const SectionHeadlines = memo(function SectionHeadlines({ teamNews, generalHeadl
             No headlines available.
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 'var(--ms-gap)' }}>
-            <div style={{ gridRow: 'span 2' }}>
-              <ArticleCard h={generalHeadlines[0]} featured />
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(200px, 30vw, 320px), 1fr))', gap: 'var(--ms-gap)' }}>
+            <ArticleCard h={generalHeadlines[0]} featured />
             {generalHeadlines.slice(1, 5).map((h, i) => (
               <ArticleCard key={i} h={h} />
             ))}
