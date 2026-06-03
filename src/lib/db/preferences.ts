@@ -8,6 +8,8 @@ export interface UserPrefs {
   dashboardTweaks?:       Record<string, unknown>;
   scoreboardOrder?:       string[];
   scoreboardCollapsed?:   Record<string, boolean>;
+  // Game IDs (just the ESPN event ID) the user has hidden from the dashboard Key Games section
+  hiddenGames?:           string[];
 }
 
 export async function getPreferences(userId: string): Promise<UserPrefs> {

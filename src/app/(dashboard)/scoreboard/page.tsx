@@ -12,14 +12,15 @@ import ScoreboardClient, { type ScoreSection, type ScoreGame, type GolfTournamen
 export const metadata: Metadata = { title: 'Scoreboard' };
 
 const LEAGUES = [
-  { key: 'nfl',    sport: 'football',   league: 'nfl',   name: 'NFL',      color: '#013369' },
-  { key: 'nba',    sport: 'basketball', league: 'nba',   name: 'NBA',      color: '#C9082A' },
-  { key: 'mlb',    sport: 'baseball',   league: 'mlb',   name: 'MLB',      color: '#002D72' },
-  { key: 'nhl',    sport: 'hockey',     league: 'nhl',   name: 'NHL',      color: '#154734' },
-  { key: 'mls',    sport: 'soccer',     league: 'usa.1', name: 'MLS',      color: '#1C4E7F' },
-  { key: 'laliga', sport: 'soccer',     league: 'esp.1', name: 'La Liga',  color: '#EF0027' },
-  { key: 'epl',    sport: 'soccer',     league: 'eng.1', name: 'EPL',      color: '#3D185A' },
-  { key: 'pga',    sport: 'golf',       league: 'pga',   name: 'PGA Tour', color: '#00573F' },
+  { key: 'nfl',      sport: 'football',   league: 'nfl',        name: 'NFL',            color: '#013369' },
+  { key: 'nba',      sport: 'basketball', league: 'nba',        name: 'NBA',            color: '#C9082A' },
+  { key: 'mlb',      sport: 'baseball',   league: 'mlb',        name: 'MLB',            color: '#002D72' },
+  { key: 'nhl',      sport: 'hockey',     league: 'nhl',        name: 'NHL',            color: '#154734' },
+  { key: 'mls',      sport: 'soccer',     league: 'usa.1',      name: 'MLS',            color: '#1C4E7F' },
+  { key: 'laliga',   sport: 'soccer',     league: 'esp.1',      name: 'La Liga',        color: '#EF0027' },
+  { key: 'epl',      sport: 'soccer',     league: 'eng.1',      name: 'EPL',            color: '#3D185A' },
+  { key: 'worldcup', sport: 'soccer',     league: 'fifa.world', name: 'FIFA World Cup', color: '#326295' },
+  { key: 'pga',      sport: 'golf',       league: 'pga',        name: 'PGA Tour',       color: '#00573F' },
 ];
 
 const ET_TZ = 'America/New_York';
@@ -117,6 +118,7 @@ function transformGame(game: ESPNGame, myTeamKeys: Set<string>, sport: string, l
     venue:     comp.venue?.fullName,
     broadcast: comp.broadcasts?.[0]?.names?.[0],
     espnLink:  espnGameUrl(sport, league, game.id),
+    label:     `${away.team.abbreviation} vs ${home.team.abbreviation}`,
   };
 }
 

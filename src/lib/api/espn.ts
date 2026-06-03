@@ -2,20 +2,21 @@ const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
 // Leagues to pull from when no sport filter is applied
 const ALL_NEWS_LEAGUES = [
-  { sport: 'football',   league: 'nfl'   },
-  { sport: 'basketball', league: 'nba'   },
-  { sport: 'baseball',   league: 'mlb'   },
-  { sport: 'hockey',     league: 'nhl'   },
-  { sport: 'soccer',     league: 'usa.1' },
-  { sport: 'soccer',     league: 'esp.1' },
-  { sport: 'soccer',     league: 'eng.1' },
-  { sport: 'golf',       league: 'pga'   },
+  { sport: 'football',   league: 'nfl'        },
+  { sport: 'basketball', league: 'nba'        },
+  { sport: 'baseball',   league: 'mlb'        },
+  { sport: 'hockey',     league: 'nhl'        },
+  { sport: 'soccer',     league: 'usa.1'      },
+  { sport: 'soccer',     league: 'esp.1'      },
+  { sport: 'soccer',     league: 'eng.1'      },
+  { sport: 'soccer',     league: 'fifa.world' },
+  { sport: 'golf',       league: 'pga'        },
 ];
 
-// Primary league per sport for filtered news
+// Fallback single-league for sports not covered by ALL_NEWS_LEAGUES multi-fetch
 const SPORT_PRIMARY_LEAGUE: Record<string, string> = {
   football: 'nfl', basketball: 'nba', baseball: 'mlb',
-  hockey: 'nhl',   soccer: 'usa.1',   golf: 'pga',
+  hockey: 'nhl',   golf: 'pga',
 };
 
 async function espnFetch(url: string, revalidate = 300): Promise<unknown> {
@@ -95,7 +96,13 @@ export async function getScoreboard(sport: string, league: string, date?: string
 
 export async function getNews(sport?: string, limit = 20): Promise<unknown[]> {
   try {
-    if (sport) {
+    // Determine which leagues to fetch from
+    const leaguesToFetch = sport
+      ? ALL_NEWS_LEAGUES.filter(l => l.sport === sport)
+      : ALL_NEWS_LEAGUES;
+
+    // Fall back to single primary league for sports not in ALL_NEWS_LEAGUES
+    if (sport && leaguesToFetch.length === 0) {
       const league = SPORT_PRIMARY_LEAGUE[sport];
       if (!league) return [];
       const data = (await espnFetch(
@@ -105,10 +112,9 @@ export async function getNews(sport?: string, limit = 20): Promise<unknown[]> {
       return data.articles ?? [];
     }
 
-    // No filter: fetch from all leagues in parallel, merge sorted by date
-    const perLeague = Math.ceil(limit / ALL_NEWS_LEAGUES.length) + 2;
+    const perLeague = Math.ceil(limit / leaguesToFetch.length) + 2;
     const results = await Promise.all(
-      ALL_NEWS_LEAGUES.map(async ({ sport: s, league: l }) => {
+      leaguesToFetch.map(async ({ sport: s, league: l }) => {
         try {
           const data = (await espnFetch(
             `${ESPN_BASE}/${s}/${l}/news?limit=${perLeague}`,

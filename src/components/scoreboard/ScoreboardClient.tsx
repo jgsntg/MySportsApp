@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
+import { EyeOff, Eye } from 'lucide-react';
 import type { UserPrefs } from '@/lib/db/preferences';
 
 const MONO = 'var(--font-mono), ui-monospace, monospace';
@@ -25,6 +26,7 @@ export interface ScoreGame {
   venue?: string;
   broadcast?: string;
   espnLink?: string;
+  label?: string; // "AWY vs HME" — used for hidden-game chips
 }
 
 export interface GolfLeader {
@@ -201,6 +203,7 @@ export default function ScoreboardClient({
 
   const [order, setOrder]           = useState<string[]>(serverOrder ?? defaultOrder);
   const [collapsed, setCollapsed]   = useState<Record<string, boolean>>(serverCollapsed ?? {});
+  const [hiddenGames, setHiddenGames] = useState<string[]>(savedPrefs?.hiddenGames ?? []);
   const [dragId, setDragId]         = useState<string | null>(null);
   const [overId, setOverId]         = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState(false);
@@ -236,6 +239,18 @@ export default function ScoreboardClient({
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 1500);
   };
+
+  const unhideGame = useCallback((id: string) => {
+    setHiddenGames(prev => {
+      const next = prev.filter(x => x !== id);
+      fetch('/api/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hiddenGames: next }),
+      }).catch(() => {});
+      return next;
+    });
+  }, []);
 
   const toggleCollapse = (key: string) => {
     const next = { ...collapsed, [key]: !collapsed[key] };
@@ -394,17 +409,45 @@ export default function ScoreboardClient({
 
               {/* Content */}
               {!isCollapsed && (
-                isGolf ? (
-                  <div style={{ maxWidth: 320 }}>
-                    <GolfCard t={section.golfTournament!} />
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-                    {section.games.map(g => (
-                      <GameCard key={g.id} g={g} />
-                    ))}
-                  </div>
-                )
+                <>
+                  {isGolf ? (
+                    <div style={{ maxWidth: 320 }}>
+                      <GolfCard t={section.golfTournament!} />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+                      {section.games.filter(g => !hiddenGames.includes(g.id)).map(g => (
+                        <GameCard key={g.id} g={g} />
+                      ))}
+                    </div>
+                  )}
+                  {/* Hidden game chips — click to re-enable */}
+                  {(() => {
+                    const hidden = section.games.filter(g => hiddenGames.includes(g.id));
+                    if (!hidden.length) return null;
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                        {hidden.map(g => (
+                          <button
+                            key={g.id}
+                            onClick={() => unhideGame(g.id)}
+                            title="Show in Key Games"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 5,
+                              background: '#1A2440', border: '1px solid rgba(255,255,255,0.08)',
+                              color: '#8392B5', borderRadius: 6, padding: '5px 9px',
+                              fontSize: 10, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+                            }}
+                          >
+                            <EyeOff size={11} />
+                            {g.label ?? `${g.away.abbr} vs ${g.home.abbr}`}
+                            <Eye size={11} style={{ marginLeft: 2, opacity: 0.6 }} />
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </>
               )}
             </div>
           );

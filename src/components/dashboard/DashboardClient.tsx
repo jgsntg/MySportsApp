@@ -310,15 +310,18 @@ const SectionHead = memo(function SectionHead({ title, count, action, actionHref
 
 // ── GameCard ──────────────────────────────────────────────────────────────────
 
-const GameCard = memo(function GameCard({ g, onFocus }: {
-  g: GameData; onFocus: (g: GameData) => void;
+const GameCard = memo(function GameCard({ g, onFocus, onHide }: {
+  g: GameData; onFocus: (g: GameData) => void; onHide: (id: string) => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const live = g.state === 'in';
   const post = g.state === 'post';
 
   const inner = (
     <div
       onClick={() => live && onFocus(g)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         background: 'var(--ms-surface)', borderRadius: 8,
         border: `1px solid ${live ? 'var(--ms-a)' : 'var(--ms-border)'}`,
@@ -328,11 +331,28 @@ const GameCard = memo(function GameCard({ g, onFocus }: {
       }}
     >
       {live && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'var(--ms-a)' }} />}
+      {/* Hide button — appears on hover */}
+      {hovered && (
+        <button
+          onClick={e => { e.preventDefault(); e.stopPropagation(); onHide(g.id); }}
+          title="Hide from Key Games"
+          style={{
+            position: 'absolute', top: 6, right: 6,
+            background: 'var(--ms-surface2)', border: '1px solid var(--ms-border)',
+            color: 'var(--ms-muted)', borderRadius: 4, width: 20, height: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', padding: 0, lineHeight: 1, zIndex: 2,
+          }}
+        >
+          <EyeOff size={11} />
+        </button>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.16em', color: 'var(--ms-muted)' }}>{g.league}</span>
         <span style={{
           fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
           color: live ? 'var(--ms-a)' : post ? 'var(--ms-muted)' : 'var(--ms-ink)', fontFamily: MONO,
+          paddingRight: hovered ? 20 : 0, transition: 'padding-right .1s',
         }}>
           {live ? `● ${g.detail}` : post ? 'FINAL' : g.detail}
         </span>
@@ -383,8 +403,8 @@ const GameCard = memo(function GameCard({ g, onFocus }: {
   if (!live && g.espnLink) {
     return (
       <a href={g.espnLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block' }}
-        onMouseEnter={e => ((e.currentTarget.firstChild as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)')}
-        onMouseLeave={e => ((e.currentTarget.firstChild as HTMLElement).style.borderColor = 'var(--ms-border)')}
+        onMouseEnter={e => { setHovered(true); (e.currentTarget.firstChild as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)'; }}
+        onMouseLeave={e => { setHovered(false); (e.currentTarget.firstChild as HTMLElement).style.borderColor = 'var(--ms-border)'; }}
       >{inner}</a>
     );
   }
@@ -395,13 +415,17 @@ const GameCard = memo(function GameCard({ g, onFocus }: {
 
 type GameTab = 'yesterday' | 'today' | 'tomorrow';
 
-const SectionGames = memo(function SectionGames({ todayGames, yesterdayGames, tomorrowGames, onFocus }: {
+const SectionGames = memo(function SectionGames({ todayGames, yesterdayGames, tomorrowGames, onFocus, hiddenGames, onHideGame }: {
   todayGames: GameData[]; yesterdayGames: GameData[]; tomorrowGames: GameData[];
   onFocus: (g: GameData) => void;
+  hiddenGames: string[];
+  onHideGame: (id: string) => void;
 }) {
   const defaultTab: GameTab = todayGames.length ? 'today' : tomorrowGames.length ? 'tomorrow' : 'yesterday';
   const [tab, setTab] = useState<GameTab>(defaultTab);
-  const games = tab === 'today' ? todayGames : tab === 'yesterday' ? yesterdayGames : tomorrowGames;
+  const allGames = tab === 'today' ? todayGames : tab === 'yesterday' ? yesterdayGames : tomorrowGames;
+  const games = allGames.filter(g => !hiddenGames.includes(g.id));
+  const hiddenCount = allGames.length - games.length;
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '5px 14px', borderRadius: 6, fontSize: 10, fontWeight: 800,
@@ -415,19 +439,31 @@ const SectionGames = memo(function SectionGames({ todayGames, yesterdayGames, to
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={tabStyle(tab === 'yesterday')} onClick={() => setTab('yesterday')}>YESTERDAY</button>
         <button style={tabStyle(tab === 'today')}     onClick={() => setTab('today')}>TODAY</button>
         <button style={tabStyle(tab === 'tomorrow')}  onClick={() => setTab('tomorrow')}>TOMORROW</button>
+        {hiddenCount > 0 && (
+          <Link href="/scoreboard" style={{
+            marginLeft: 8, fontSize: 9, color: 'var(--ms-muted)', letterSpacing: '0.12em',
+            fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            <EyeOff size={10} />
+            {hiddenCount} HIDDEN · RE-ENABLE ON SCOREBOARD
+          </Link>
+        )}
       </div>
       {!games.length ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--ms-muted)', border: '1px dashed var(--ms-border)', borderRadius: 8 }}>
-          No games {emptyMsg}.
+          {allGames.length > 0
+            ? <span>All games hidden. <Link href="/scoreboard" style={{ color: 'var(--ms-a)', textDecoration: 'none' }}>Re-enable on Scoreboard</Link>.</span>
+            : `No games ${emptyMsg}.`
+          }
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(160px, 28vw, 280px), 1fr))', gap: 'var(--ms-gap)' }}>
           {games.slice(0, 9).map(g => (
-            <GameCard key={g.id} g={g} onFocus={onFocus} />
+            <GameCard key={g.id} g={g} onFocus={onFocus} onHide={onHideGame} />
           ))}
         </div>
       )}
@@ -785,6 +821,7 @@ export default function DashboardClient({
   const [order, setOrder]               = useState<string[]>(serverOrder ?? DEFAULT_ORDER);
   const [dashboardPlayers, setDashboardPlayers] = useState<FavoritePlayer[]>(myPlayers);
   const [savedSnapshot, setSavedSnapshot] = useState<string[] | null>(serverOrder ?? null);
+  const [hiddenGames, setHiddenGames]   = useState<string[]>(savedPrefs?.hiddenGames ?? []);
   const initialized = React.useRef(false);
   const tweaksSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -943,6 +980,18 @@ export default function DashboardClient({
     }).catch(() => {});
   }, []);
 
+  const onHideGame = useCallback((id: string) => {
+    setHiddenGames(prev => {
+      const next = prev.includes(id) ? prev : [...prev, id];
+      fetch('/api/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hiddenGames: next }),
+      }).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const isVisible      = (id: string) => tweaks.visible[id] !== false;
   const orderedVisible = order.filter(isVisible);
 
@@ -963,7 +1012,7 @@ export default function DashboardClient({
 
   const renderSection = (id: string) => {
     switch (id) {
-      case 'games':     return <SectionGames     todayGames={todayGames} yesterdayGames={yesterdayGames} tomorrowGames={tomorrowGames} onFocus={openFocus} />;
+      case 'games':     return <SectionGames     todayGames={todayGames} yesterdayGames={yesterdayGames} tomorrowGames={tomorrowGames} onFocus={openFocus} hiddenGames={hiddenGames} onHideGame={onHideGame} />;
       case 'teams':     return <SectionTeams     myTeams={myTeams} />;
       case 'players':   return <SectionPlayers   myPlayers={dashboardPlayers} onMovePlayer={movePlayer} onToggleCommandCenter={togglePlayerCommandCenter} />;
       case 'headlines': return <SectionHeadlines teamNews={teamNews} generalHeadlines={generalHeadlines} />;

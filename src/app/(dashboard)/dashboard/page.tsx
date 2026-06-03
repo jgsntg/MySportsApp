@@ -13,14 +13,15 @@ import DashboardClient, { type GameData } from '@/components/dashboard/Dashboard
 export const metadata: Metadata = { title: 'Dashboard' };
 
 const LEAGUES = [
-  { sport: 'football',   league: 'nfl',   name: 'NFL' },
-  { sport: 'basketball', league: 'nba',   name: 'NBA' },
-  { sport: 'baseball',   league: 'mlb',   name: 'MLB' },
-  { sport: 'hockey',     league: 'nhl',   name: 'NHL' },
-  { sport: 'soccer',     league: 'usa.1', name: 'MLS' },
-  { sport: 'soccer',     league: 'esp.1', name: 'La Liga' },
-  { sport: 'soccer',     league: 'eng.1', name: 'EPL' },
-  { sport: 'golf',       league: 'pga',   name: 'PGA Tour' },
+  { sport: 'football',   league: 'nfl',        name: 'NFL' },
+  { sport: 'basketball', league: 'nba',        name: 'NBA' },
+  { sport: 'baseball',   league: 'mlb',        name: 'MLB' },
+  { sport: 'hockey',     league: 'nhl',        name: 'NHL' },
+  { sport: 'soccer',     league: 'usa.1',      name: 'MLS' },
+  { sport: 'soccer',     league: 'esp.1',      name: 'La Liga' },
+  { sport: 'soccer',     league: 'eng.1',      name: 'EPL' },
+  { sport: 'soccer',     league: 'fifa.world', name: 'FIFA World Cup' },
+  { sport: 'golf',       league: 'pga',        name: 'PGA Tour' },
 ];
 
 const ET_TZ = 'America/New_York';
