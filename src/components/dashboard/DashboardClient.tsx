@@ -161,7 +161,7 @@ const Ticker = memo(function Ticker({ games }: { games: GameData[] }) {
 // ── LiveBanner ────────────────────────────────────────────────────────────────
 
 const LiveBanner = memo(function LiveBanner({ games, onFocus }: {
-  games: GameData[]; onFocus: (g: GameData, idx: number) => void;
+  games: GameData[]; onFocus: (g: GameData) => void;
 }) {
   const [idx, setIdx] = useState(0);
   const live = games.filter(g => g.state === 'in' && (g.away.mine || g.home.mine));
@@ -217,7 +217,7 @@ const LiveBanner = memo(function LiveBanner({ games, onFocus }: {
         }}>›</button>
       )}
 
-      <button onClick={() => onFocus(g, safeIdx)} style={{
+      <button onClick={() => onFocus(g)} style={{
         background: 'var(--ms-a)', color: '#000', border: 'none', padding: '6px 12px',
         borderRadius: 6, fontSize: 10, fontWeight: 800, letterSpacing: '0.12em',
         cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
@@ -881,15 +881,21 @@ export default function DashboardClient({
     [todayGames]
   );
 
+  // All live games (not just favorites) — used as the FocusMode navigation list
+  const liveAllGames = useMemo(
+    () => todayGames.filter(g => g.state === 'in'),
+    [todayGames]
+  );
+
   const greetingMsg =
     liveMyTeamCount === 0 ? "What's happening in sports today." :
     liveMyTeamCount === 1 ? 'One of yours is live.' :
     `${liveMyTeamCount} of yours are live.`;
 
-  const openFocus = useCallback((g: GameData, idx?: number) => {
-    const i = idx ?? liveMyGames.findIndex(x => x.id === g.id);
+  const openFocus = useCallback((g: GameData) => {
+    const i = liveAllGames.findIndex(x => x.id === g.id);
     setFocusIdx(i >= 0 ? i : 0);
-  }, [liveMyGames]);
+  }, [liveAllGames]);
 
   const onDragStart = (id: string) => (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move';
@@ -1106,9 +1112,9 @@ export default function DashboardClient({
 
       {showTweaks && <TweaksPanel tweaks={tweaks} set={set} sections={sectionList} />}
 
-      {focusIdx !== null && liveMyGames.length > 0 && (
+      {focusIdx !== null && liveAllGames.length > 0 && (
         <FocusMode
-          liveMyGames={liveMyGames}
+          liveMyGames={liveAllGames}
           initialIdx={focusIdx}
           onClose={() => setFocusIdx(null)}
         />
